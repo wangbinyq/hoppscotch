@@ -1,14 +1,14 @@
 <template>
   <div
-    class="flex flex-col flex-1 border rounded border-divider"
+    class="flex flex-1 flex-col rounded border border-divider"
     @contextmenu.prevent="!compact ? options.tippy.show() : null"
   >
     <div
-      class="flex items-start flex-1"
+      class="flex flex-1 items-start"
       :class="
         compact
           ? team.myRole === 'OWNER'
-            ? 'cursor-pointer hover:bg-primaryDark transition hover:border-dividerDark focus-visible:border-dividerDark'
+            ? 'cursor-pointer transition hover:border-dividerDark hover:bg-primaryDark focus-visible:border-dividerDark'
             : 'cursor-not-allowed bg-primaryLight'
           : ''
       "
@@ -20,43 +20,19 @@
           : ''
       "
     >
-      <div class="p-4">
+      <div class="p-4 truncate">
         <label
           class="font-semibold text-secondaryDark"
           :class="{ 'cursor-pointer': compact && team.myRole === 'OWNER' }"
         >
           {{ team.name || t("state.nothing_found") }}
         </label>
-        <div class="flex mt-2 overflow-hidden -space-x-1">
-          <div
-            v-for="(member, index) in team.teamMembers"
-            :key="`member-${index}`"
-            v-tippy="{ theme: 'tooltip' }"
-            :title="
-              member.user.displayName ||
-              member.user.email ||
-              t('default_hopp_displayName')
-            "
-            class="inline-flex"
-          >
-            <ProfilePicture
-              v-if="member.user.photoURL"
-              :url="member.user.photoURL"
-              :alt="member.user.displayName"
-              class="ring-primary ring-2"
-            />
-            <ProfilePicture
-              v-else
-              :initial="member.user.displayName || member.user.email"
-              class="ring-primary ring-2"
-            />
-          </div>
-        </div>
+        <TeamsMemberStack :team-members="team.teamMembers" class="mt-4" />
       </div>
     </div>
-    <div v-if="!compact" class="flex items-end justify-between flex-shrink-0">
+    <div v-if="!compact" class="flex flex-shrink-0 items-end justify-between">
       <span>
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-if="team.myRole === 'OWNER'"
           :icon="IconEdit"
           class="rounded-none"
@@ -67,7 +43,7 @@
             }
           "
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-if="team.myRole === 'OWNER'"
           :icon="IconUserPlus"
           class="rounded-none"
@@ -87,7 +63,7 @@
           theme="popover"
           :on-shown="() => tippyActions.focus()"
         >
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip' }"
             :title="t('action.more')"
             :icon="IconMoreVertical"
@@ -108,7 +84,7 @@
               "
               @keyup.escape="hide()"
             >
-              <SmartItem
+              <HoppSmartItem
                 v-if="team.myRole === 'OWNER'"
                 ref="edit"
                 :icon="IconEdit"
@@ -121,7 +97,7 @@
                   }
                 "
               />
-              <SmartItem
+              <HoppSmartItem
                 v-if="!(team.myRole === 'OWNER' && team.ownersCount == 1)"
                 ref="exit"
                 :icon="IconUserX"
@@ -134,7 +110,7 @@
                   }
                 "
               />
-              <SmartItem
+              <HoppSmartItem
                 v-if="team.myRole === 'OWNER'"
                 ref="deleteAction"
                 :icon="IconTrash2"
@@ -152,13 +128,14 @@
         </tippy>
       </span>
     </div>
-    <SmartConfirmModal
+    <HoppSmartConfirmModal
       :show="confirmRemove"
       :title="t('confirm.remove_team')"
+      :loading-state="loading"
       @hide-modal="confirmRemove = false"
       @resolve="deleteTeam()"
     />
-    <SmartConfirmModal
+    <HoppSmartConfirmModal
       :show="confirmExit"
       :title="t('confirm.exit_team')"
       @hide-modal="confirmExit = false"
@@ -171,7 +148,7 @@
 import { ref } from "vue"
 import { pipe } from "fp-ts/function"
 import * as TE from "fp-ts/TaskEither"
-import { TeamMemberRole } from "~/helpers/backend/graphql"
+import { GetMyTeamsQuery } from "~/helpers/backend/graphql"
 import {
   deleteTeam as backendDeleteTeam,
   leaveTeam,
@@ -185,22 +162,13 @@ import IconMoreVertical from "~icons/lucide/more-vertical"
 import IconUserX from "~icons/lucide/user-x"
 import IconUserPlus from "~icons/lucide/user-plus"
 import IconTrash2 from "~icons/lucide/trash-2"
+import { useService } from "dioc/vue"
+import { WorkspaceService } from "~/services/workspace.service"
 
 const t = useI18n()
 
 const props = defineProps<{
-  team: {
-    name: string
-    myRole: TeamMemberRole
-    ownersCount: number
-    teamMembers: Array<{
-      user: {
-        displayName: string
-        photoURL: string | null
-        email: string | null
-      }
-    }>
-  }
+  team: GetMyTeamsQuery["myTeams"][number]
   teamID: string
   compact: boolean
 }>()
@@ -208,6 +176,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "edit-team"): void
   (e: "invite-team"): void
+  (e: "refetch-teams"): void
 }>()
 
 const toast = useToast()
@@ -215,7 +184,12 @@ const toast = useToast()
 const confirmRemove = ref(false)
 const confirmExit = ref(false)
 
+const loading = ref(false)
+
+const workspaceService = useService(WorkspaceService)
+
 const deleteTeam = () => {
+  loading.value = true
   pipe(
     backendDeleteTeam(props.teamID),
     TE.match(
@@ -223,9 +197,25 @@ const deleteTeam = () => {
         // TODO: Better errors ? We know the possible errors now
         toast.error(`${t("error.something_went_wrong")}`)
         console.error(err)
+        loading.value = false
+        confirmRemove.value = false
       },
       () => {
         toast.success(`${t("team.deleted")}`)
+        loading.value = false
+        emit("refetch-teams")
+
+        const currentWorkspace = workspaceService.currentWorkspace.value
+
+        // If the current workspace is the deleted workspace, change the workspace to personal
+        if (
+          currentWorkspace.type === "team" &&
+          currentWorkspace.teamID === props.teamID
+        ) {
+          workspaceService.changeWorkspace({ type: "personal" })
+        }
+
+        confirmRemove.value = false
       }
     )
   )() // Tasks (and TEs) are lazy, so call the function returned

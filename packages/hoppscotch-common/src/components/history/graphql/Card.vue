@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col group">
+  <div class="group flex flex-col">
     <div class="flex items-center">
       <span
         v-tippy="{
@@ -7,7 +7,7 @@
           delay: [500, 20],
           content: entry.updatedOn ? shortDateTime(entry.updatedOn) : null,
         }"
-        class="flex flex-1 min-w-0 py-2 pl-4 pr-2 cursor-pointer transition group-hover:text-secondaryDark"
+        class="flex min-w-0 flex-1 cursor-pointer py-2 pl-4 pr-2 transition group-hover:text-secondaryDark"
         data-testid="restore_history_entry"
         @click="useEntry"
       >
@@ -15,7 +15,7 @@
           {{ entry.request.url }}
         </span>
       </span>
-      <ButtonSecondary
+      <HoppButtonSecondary
         v-tippy="{ theme: 'tooltip' }"
         :icon="IconTrash"
         color="red"
@@ -24,19 +24,19 @@
         data-testid="delete_history_entry"
         @click="emit('delete-entry')"
       />
-      <ButtonSecondary
+      <HoppButtonSecondary
         v-tippy="{ theme: 'tooltip' }"
         :title="expand ? t('hide.more') : t('show.more')"
         :icon="expand ? IconMinimize2 : IconMaximize2"
         class="hidden group-hover:inline-flex"
         @click="expand = !expand"
       />
-      <ButtonSecondary
+      <HoppButtonSecondary
         v-tippy="{ theme: 'tooltip' }"
         :title="!entry.star ? t('add.star') : t('remove.star')"
         :icon="entry.star ? IconStarOff : IconStar"
         color="yellow"
-        :class="{ 'group-hover:inline-flex hidden': !entry.star }"
+        :class="{ 'hidden group-hover:inline-flex': !entry.star }"
         data-testid="star_button"
         @click="emit('toggle-star')"
       />
@@ -45,7 +45,7 @@
       <span
         v-for="(line, index) in query"
         :key="`line-${index}`"
-        class="px-4 font-mono truncate whitespace-pre cursor-pointer text-secondaryLight"
+        class="cursor-pointer truncate whitespace-pre px-4 font-mono text-secondaryLight"
         data-testid="restore_history_entry"
         @click="useEntry"
         >{{ line }}</span
@@ -56,21 +56,22 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import { makeGQLRequest } from "@hoppscotch/data"
-import { cloneDeep } from "lodash-es"
-import { setGQLSession } from "~/newstore/GQLSession"
 import { GQLHistoryEntry } from "~/newstore/history"
 import { shortDateTime } from "~/helpers/utils/date"
 
 import IconStar from "~icons/lucide/star"
-import IconStarOff from "~icons/lucide/star-off"
+import IconStarOff from "~icons/hopp/star-off"
 import IconTrash from "~icons/lucide/trash"
 import IconMinimize2 from "~icons/lucide/minimize-2"
 import IconMaximize2 from "~icons/lucide/maximize-2"
 
 import { useI18n } from "@composables/i18n"
+import { makeGQLRequest } from "@hoppscotch/data"
+import { useService } from "dioc/vue"
+import { GQLTabService } from "~/services/tab/graphql"
 
 const t = useI18n()
+const tabs = useService(GQLTabService)
 
 const props = defineProps<{
   entry: GQLHistoryEntry
@@ -94,19 +95,16 @@ const query = computed(() =>
 )
 
 const useEntry = () => {
-  setGQLSession({
-    request: cloneDeep(
-      makeGQLRequest({
-        name: props.entry.request.name,
-        url: props.entry.request.url,
-        headers: props.entry.request.headers,
-        query: props.entry.request.query,
-        variables: props.entry.request.variables,
-        auth: props.entry.request.auth,
-      })
-    ),
-    schema: "",
-    response: props.entry.response,
+  tabs.createNewTab({
+    request: makeGQLRequest({
+      name: props.entry.request.name,
+      url: props.entry.request.url,
+      headers: props.entry.request.headers,
+      query: props.entry.request.query,
+      variables: props.entry.request.variables,
+      auth: props.entry.request.auth,
+    }),
+    isDirty: false,
   })
 }
 </script>

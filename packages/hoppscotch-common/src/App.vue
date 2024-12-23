@@ -2,12 +2,13 @@
   <div>
     <div
       v-if="isLoadingInitialRoute"
-      class="flex flex-col items-center justify-center min-h-screen"
+      class="flex min-h-screen flex-col items-center justify-center"
     >
-      <SmartSpinner />
+      <HoppSmartSpinner />
     </div>
     <ErrorPage v-if="errorInfo !== null" :error="errorInfo" />
     <RouterView v-else />
+    <Toaster rich-colors />
   </div>
 </template>
 
@@ -18,6 +19,8 @@ import { HOPP_MODULES } from "@modules/."
 import { isLoadingInitialRoute } from "@modules/router"
 import { useI18n } from "@composables/i18n"
 import { APP_IS_IN_DEV_MODE } from "@helpers/dev"
+import { platform } from "./platform"
+import { Toaster } from "@hoppscotch/ui"
 
 const t = useI18n()
 
@@ -45,4 +48,5 @@ if (APP_IS_IN_DEV_MODE) {
 
 // Run module root component setup code
 HOPP_MODULES.forEach((mod) => mod.onRootSetup?.())
+platform.addedHoppModules?.forEach((mod) => mod.onRootSetup?.())
 </script>

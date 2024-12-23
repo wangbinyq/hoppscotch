@@ -9,18 +9,45 @@ import {
   DeleteCollectionDocument,
   DeleteCollectionMutation,
   DeleteCollectionMutationVariables,
+  DuplicateTeamCollectionDocument,
+  DuplicateTeamCollectionMutation,
+  DuplicateTeamCollectionMutationVariables,
   ImportFromJsonDocument,
   ImportFromJsonMutation,
   ImportFromJsonMutationVariables,
+  MoveRestTeamCollectionDocument,
+  MoveRestTeamCollectionMutation,
+  MoveRestTeamCollectionMutationVariables,
   RenameCollectionDocument,
   RenameCollectionMutation,
   RenameCollectionMutationVariables,
+  UpdateCollectionOrderDocument,
+  UpdateCollectionOrderMutation,
+  UpdateCollectionOrderMutationVariables,
+  UpdateTeamCollectionDocument,
+  UpdateTeamCollectionMutation,
+  UpdateTeamCollectionMutationVariables,
 } from "../graphql"
 
 type CreateNewRootCollectionError = "team_coll/short_title"
+
 type CreateChildCollectionError = "team_coll/short_title"
+
 type RenameCollectionError = "team_coll/short_title"
+
 type DeleteCollectionError = "team/invalid_coll_id"
+
+type MoveRestTeamCollectionError =
+  | "team/invalid_coll_id"
+  | "team_coll/invalid_target_id"
+  | "team/collection_is_parent_coll"
+  | "team/target_and_destination_collection_are_same"
+  | "team/target_collection_is_already_root_collection"
+
+type UpdateCollectionOrderError =
+  | "team/invalid_coll_id"
+  | "team/collection_and_next_collection_are_same"
+  | "team/team_collections_have_different_parents"
 
 export const createNewRootCollection = (title: string, teamID: string) =>
   runMutation<
@@ -66,6 +93,33 @@ export const deleteCollection = (collectionID: string) =>
     collectionID,
   })
 
+/** Can be used to move both collection and folder (considered same in BE) */
+export const moveRESTTeamCollection = (
+  collectionID: string,
+  destinationCollectionID: string | null
+) =>
+  runMutation<
+    MoveRestTeamCollectionMutation,
+    MoveRestTeamCollectionMutationVariables,
+    MoveRestTeamCollectionError
+  >(MoveRestTeamCollectionDocument, {
+    collectionID,
+    parentCollectionID: destinationCollectionID,
+  })
+
+export const updateOrderRESTTeamCollection = (
+  collectionID: string,
+  destCollID: string | null
+) =>
+  runMutation<
+    UpdateCollectionOrderMutation,
+    UpdateCollectionOrderMutationVariables,
+    UpdateCollectionOrderError
+  >(UpdateCollectionOrderDocument, {
+    collectionID,
+    destCollID,
+  })
+
 export const importJSONToTeam = (collectionJSON: string, teamID: string) =>
   runMutation<ImportFromJsonMutation, ImportFromJsonMutationVariables, "">(
     ImportFromJsonDocument,
@@ -74,3 +128,27 @@ export const importJSONToTeam = (collectionJSON: string, teamID: string) =>
       teamID,
     }
   )
+
+export const updateTeamCollection = (
+  collectionID: string,
+  data?: string,
+  newTitle?: string
+) =>
+  runMutation<
+    UpdateTeamCollectionMutation,
+    UpdateTeamCollectionMutationVariables,
+    ""
+  >(UpdateTeamCollectionDocument, {
+    collectionID,
+    data,
+    newTitle,
+  })
+
+export const duplicateTeamCollection = (collectionID: string) =>
+  runMutation<
+    DuplicateTeamCollectionMutation,
+    DuplicateTeamCollectionMutationVariables,
+    ""
+  >(DuplicateTeamCollectionDocument, {
+    collectionID,
+  })

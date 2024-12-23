@@ -6,7 +6,7 @@
       <span v-else-if="isEnum" class="text-accent">enum </span>
       {{ gqlType.name }}
     </div>
-    <div v-if="gqlType.description" class="py-2 text-secondaryLight type-desc">
+    <div v-if="gqlType.description" class="type-desc py-2 text-secondaryLight">
       {{ gqlType.description }}
     </div>
     <div v-if="interfaces.length > 0">
@@ -18,7 +18,7 @@
         <GraphqlTypeLink
           :gql-type="gqlInterface"
           :jump-type-callback="jumpTypeCallback"
-          class="pl-4 border-l-2 border-divider"
+          class="border-l-2 border-divider pl-4"
         />
       </div>
     </div>
@@ -29,7 +29,7 @@
         :key="`child-${index}`"
         :gql-type="child"
         :jump-type-callback="jumpTypeCallback"
-        class="pl-4 border-l-2 border-divider"
+        class="border-l-2 border-divider pl-4"
       />
     </div>
     <div v-if="gqlType.getFields">
@@ -37,7 +37,7 @@
       <GraphqlField
         v-for="(field, index) in gqlType.getFields()"
         :key="`field-${index}`"
-        class="pl-4 border-l-2 border-divider"
+        class="border-l-2 border-divider pl-4"
         :gql-field="field"
         :is-highlighted="isFieldHighlighted({ field })"
         :jump-type-callback="jumpTypeCallback"
@@ -48,58 +48,55 @@
       <div
         v-for="(value, index) in gqlType.getValues()"
         :key="`value-${index}`"
-        class="pl-4 border-l-2 border-divider"
+        class="border-l-2 border-divider pl-4"
         v-text="value.name"
       ></div>
     </div>
   </div>
 </template>
 
-<script>
-// TODO: TypeScript + Setup Script this at some point :)
-
-import { defineComponent } from "vue"
+<script setup lang="ts">
 import {
   GraphQLEnumType,
   GraphQLInputObjectType,
   GraphQLInterfaceType,
 } from "graphql"
+import { computed } from "vue"
 
-export default defineComponent({
-  props: {
-    // eslint-disable-next-line vue/require-default-prop, vue/require-prop-types
-    gqlType: {},
-    gqlTypes: { type: Array, default: () => [] },
-    jumpTypeCallback: { type: Function, default: () => ({}) },
-    isHighlighted: { type: Boolean, default: false },
-    highlightedFields: { type: Array, default: () => [] },
+const props = defineProps({
+  gqlType: {
+    type: Object,
+    required: true,
   },
-  computed: {
-    isInput() {
-      return this.gqlType instanceof GraphQLInputObjectType
-    },
-    isInterface() {
-      return this.gqlType instanceof GraphQLInterfaceType
-    },
-    isEnum() {
-      return this.gqlType instanceof GraphQLEnumType
-    },
-    interfaces() {
-      return (this.gqlType.getInterfaces && this.gqlType.getInterfaces()) || []
-    },
-    children() {
-      return this.gqlTypes.filter(
-        (type) =>
-          type.getInterfaces && type.getInterfaces().includes(this.gqlType)
-      )
-    },
-  },
-  methods: {
-    isFieldHighlighted({ field }) {
-      return !!this.highlightedFields.find(({ name }) => name === field.name)
-    },
-  },
+  gqlTypes: { type: Array, default: () => [] },
+  jumpTypeCallback: { type: Function, default: () => ({}) },
+  isHighlighted: { type: Boolean, default: false },
+  highlightedFields: { type: Array, default: () => [] },
 })
+
+const isInput = computed(() => {
+  return props.gqlType instanceof GraphQLInputObjectType
+})
+
+const isInterface = computed(() => {
+  return props.gqlType instanceof GraphQLInterfaceType
+})
+const isEnum = computed(() => {
+  return props.gqlType instanceof GraphQLEnumType
+})
+const interfaces = computed(() => {
+  return (props.gqlType.getInterfaces && props.gqlType.getInterfaces()) || []
+})
+
+const children = computed(() => {
+  return props.gqlTypes.filter(
+    (type) => type.getInterfaces && type.getInterfaces().includes(props.gqlType)
+  )
+})
+
+const isFieldHighlighted = ({ field }) => {
+  return !!props.highlightedFields.find(({ name }) => name === field.name)
+}
 </script>
 
 <style lang="scss" scoped>

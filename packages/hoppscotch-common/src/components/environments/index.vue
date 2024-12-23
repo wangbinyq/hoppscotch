@@ -1,170 +1,24 @@
 <template>
   <div>
     <div
-      class="sticky top-0 z-10 flex flex-col flex-shrink-0 overflow-x-auto rounded-t bg-primary"
+      class="sticky top-0 z-10 flex flex-shrink-0 flex-col overflow-x-auto bg-primary"
     >
-      <tippy
-        v-if="environmentType.type === 'my-environments'"
-        interactive
-        trigger="click"
-        theme="popover"
-        :on-shown="() => tippyActions!.focus()"
-      >
-        <span
-          v-tippy="{ theme: 'tooltip' }"
-          :title="`${t('environment.select')}`"
-          class="bg-transparent border-b border-dividerLight select-wrapper"
-        >
-          <ButtonSecondary
-            v-if="
-              selectedEnv.type === 'MY_ENV' && selectedEnv.index !== undefined
-            "
-            :label="myEnvironments[selectedEnv.index].name"
-            class="flex-1 !justify-start pr-8 rounded-none"
-          />
-          <ButtonSecondary
-            v-else
-            :label="`${t('environment.select')}`"
-            class="flex-1 !justify-start pr-8 rounded-none"
-          />
-        </span>
-        <template #content="{ hide }">
-          <div
-            ref="tippyActions"
-            role="menu"
-            class="flex flex-col focus:outline-none"
-            tabindex="0"
-            @keyup.escape="hide()"
-          >
-            <SmartItem
-              :label="`${t('environment.no_environment')}`"
-              :info-icon="
-                selectedEnvironmentIndex.type !== 'MY_ENV'
-                  ? IconCheck
-                  : undefined
-              "
-              :active-info-icon="selectedEnvironmentIndex.type !== 'MY_ENV'"
-              @click="
-                () => {
-                  selectedEnvironmentIndex = { type: 'NO_ENV_SELECTED' }
-                  hide()
-                }
-              "
-            />
-            <hr v-if="myEnvironments.length > 0" />
-            <SmartItem
-              v-for="(gen, index) in myEnvironments"
-              :key="`gen-${index}`"
-              :label="gen.name"
-              :info-icon="index === selectedEnv.index ? IconCheck : undefined"
-              :active-info-icon="index === selectedEnv.index"
-              @click="
-                () => {
-                  selectedEnvironmentIndex = { type: 'MY_ENV', index: index }
-                  hide()
-                }
-              "
-            />
-          </div>
-        </template>
-      </tippy>
-      <tippy v-else interactive trigger="click" theme="popover">
-        <span
-          v-tippy="{ theme: 'tooltip' }"
-          :title="`${t('environment.select')}`"
-          class="bg-transparent border-b border-dividerLight select-wrapper"
-        >
-          <ButtonSecondary
-            v-if="selectedEnv.name"
-            :label="selectedEnv.name"
-            class="flex-1 !justify-start pr-8 rounded-none"
-          />
-          <ButtonSecondary
-            v-else
-            :label="`${t('environment.select')}`"
-            class="flex-1 !justify-start pr-8 rounded-none"
-          />
-        </span>
-        <template #content="{ hide }">
-          <div
-            class="flex flex-col"
-            role="menu"
-            tabindex="0"
-            @keyup.escape="hide()"
-          >
-            <SmartItem
-              :label="`${t('environment.no_environment')}`"
-              :info-icon="
-                selectedEnvironmentIndex.type !== 'TEAM_ENV'
-                  ? IconCheck
-                  : undefined
-              "
-              :active-info-icon="selectedEnvironmentIndex.type !== 'TEAM_ENV'"
-              @click="
-                () => {
-                  selectedEnvironmentIndex = { type: 'NO_ENV_SELECTED' }
-                  hide()
-                }
-              "
-            />
-            <div
-              v-if="loading"
-              class="flex flex-col items-center justify-center p-4"
-            >
-              <SmartSpinner class="my-4" />
-              <span class="text-secondaryLight">{{ t("state.loading") }}</span>
-            </div>
-            <hr v-if="teamEnvironmentList.length > 0" />
-            <div
-              v-if="environmentType.selectedTeam !== undefined"
-              class="flex flex-col"
-            >
-              <SmartItem
-                v-for="(gen, index) in teamEnvironmentList"
-                :key="`gen-team-${index}`"
-                :label="gen.environment.name"
-                :info-icon="
-                  gen.id === selectedEnv.teamEnvID ? IconCheck : undefined
-                "
-                :active-info-icon="gen.id === selectedEnv.teamEnvID"
-                @click="
-                  () => {
-                    selectedEnvironmentIndex = {
-                      type: 'TEAM_ENV',
-                      teamEnvID: gen.id,
-                      teamID: gen.teamID,
-                      environment: gen.environment,
-                    }
-                    hide()
-                  }
-                "
-              />
-            </div>
-            <div
-              v-if="!loading && adapterError"
-              class="flex flex-col items-center py-4"
-            >
-              <i class="mb-4 material-icons">help_outline</i>
-              {{ getErrorMessage(adapterError) }}
-            </div>
-          </div>
-        </template>
-      </tippy>
+      <WorkspaceCurrent :section="t('tab.environments')" />
       <EnvironmentsMyEnvironment
         environment-index="Global"
         :environment="globalEnvironment"
+        :duplicate-global-environment-loading="
+          duplicateGlobalEnvironmentLoading
+        "
+        :show-context-menu-loading-state="workspace.type === 'team'"
         class="border-b border-dividerLight"
+        @duplicate-global-environment="duplicateGlobalEnvironment"
         @edit-environment="editEnvironment('Global')"
       />
-      <EnvironmentsChooseType
-        :environment-type="environmentType"
-        @update-environment-type="updateEnvironmentType"
-        @update-selected-team="updateSelectedTeam"
-      />
     </div>
-    <EnvironmentsMy v-if="environmentType.type === 'my-environments'" />
+    <EnvironmentsMy v-show="isPersonalEnvironmentType" />
     <EnvironmentsTeams
-      v-if="environmentType.type === 'team-environments'"
+      v-show="environmentType.type === 'team-environments'"
       :team="environmentType.selectedTeam"
       :team-environments="teamEnvironmentList"
       :loading="loading"
@@ -175,39 +29,66 @@
       :action="action"
       :editing-environment-index="editingEnvironmentIndex"
       :editing-variable-name="editingVariableName"
+      :env-vars="envVars"
+      :is-secret-option-selected="secretOptionSelected"
       @hide-modal="displayModalEdit(false)"
     />
+    <EnvironmentsAdd
+      :show="showModalNew"
+      :name="editingVariableName"
+      :value="editingVariableValue"
+      :position="position"
+      @hide-modal="displayModalNew(false)"
+    />
   </div>
+
+  <HoppSmartConfirmModal
+    :show="showConfirmRemoveEnvModal"
+    :title="`${t('confirm.remove_environment')}`"
+    @hide-modal="showConfirmRemoveEnvModal = false"
+    @resolve="removeSelectedEnvironment()"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
-import { isEqual } from "lodash-es"
-import { currentUser$ } from "~/helpers/fb/auth"
-import { Team } from "~/helpers/backend/graphql"
 import { useReadonlyStream, useStream } from "@composables/stream"
+import { Environment, GlobalEnvironment } from "@hoppscotch/data"
+import { useService } from "dioc/vue"
+import * as TE from "fp-ts/TaskEither"
+import { pipe } from "fp-ts/function"
+import { cloneDeep, isEqual } from "lodash-es"
+import { computed, ref, watch } from "vue"
 import { useI18n } from "~/composables/i18n"
+import { useToast } from "~/composables/toast"
+import { defineActionHandler } from "~/helpers/actions"
+import { GQLError } from "~/helpers/backend/GQLClient"
 import {
-  environments$,
+  createTeamEnvironment,
+  deleteTeamEnvironment,
+} from "~/helpers/backend/mutations/TeamEnvironment"
+import { getEnvActionErrorMessage } from "~/helpers/error-messages"
+import TeamEnvironmentAdapter from "~/helpers/teams/TeamEnvironmentAdapter"
+import {
+  createEnvironment,
+  deleteEnvironment,
+  getGlobalVariables,
+  getSelectedEnvironmentIndex,
   globalEnv$,
   selectedEnvironmentIndex$,
   setSelectedEnvironmentIndex,
 } from "~/newstore/environments"
-import TeamEnvironmentAdapter from "~/helpers/teams/TeamEnvironmentAdapter"
-import { GQLError } from "~/helpers/backend/GQLClient"
-import IconCheck from "~icons/lucide/check"
-import { TippyComponent } from "vue-tippy"
-import { defineActionHandler } from "~/helpers/actions"
+import { useLocalState } from "~/newstore/localstate"
+import { platform } from "~/platform"
+import { TeamWorkspace, WorkspaceService } from "~/services/workspace.service"
 
 const t = useI18n()
+const toast = useToast()
 
 type EnvironmentType = "my-environments" | "team-environments"
 
-type SelectedTeam = Team | undefined
-
 type EnvironmentsChooseType = {
   type: EnvironmentType
-  selectedTeam: SelectedTeam
+  selectedTeam: TeamWorkspace | undefined
 }
 
 const environmentType = ref<EnvironmentsChooseType>({
@@ -215,51 +96,116 @@ const environmentType = ref<EnvironmentsChooseType>({
   selectedTeam: undefined,
 })
 
-const globalEnv = useReadonlyStream(globalEnv$, [])
+const globalEnv = useReadonlyStream(globalEnv$, {} as GlobalEnvironment)
 
-const globalEnvironment = computed(() => ({
+const globalEnvironment = computed<Environment>(() => ({
+  v: 1 as const,
+  id: "Global",
   name: "Global",
-  variables: globalEnv.value,
+  variables: globalEnv.value.variables,
 }))
 
-const currentUser = useReadonlyStream(currentUser$, null)
+const isPersonalEnvironmentType = computed(
+  () => environmentType.value.type === "my-environments"
+)
 
-const updateSelectedTeam = (newSelectedTeam: SelectedTeam) => {
-  environmentType.value.selectedTeam = newSelectedTeam
-}
-const updateEnvironmentType = (newEnvironmentType: EnvironmentType) => {
-  environmentType.value.type = newEnvironmentType
-}
+const currentUser = useReadonlyStream(
+  platform.auth.getCurrentUserStream(),
+  platform.auth.getCurrentUser()
+)
+
+const workspaceService = useService(WorkspaceService)
+const REMEMBERED_TEAM_ID = useLocalState("REMEMBERED_TEAM_ID")
 
 const adapter = new TeamEnvironmentAdapter(undefined)
 const adapterLoading = useReadonlyStream(adapter.loading$, false)
 const adapterError = useReadonlyStream(adapter.error$, null)
 const teamEnvironmentList = useReadonlyStream(adapter.teamEnvironmentList$, [])
 
+const selectedEnvironmentIndex = useStream(
+  selectedEnvironmentIndex$,
+  { type: "NO_ENV_SELECTED" },
+  setSelectedEnvironmentIndex
+)
+
 const loading = computed(
   () => adapterLoading.value && teamEnvironmentList.value.length === 0
 )
 
-watch(
-  () => environmentType.value.selectedTeam?.id,
-  (newTeamID) => {
-    adapter.changeTeamID(newTeamID)
+const switchToMyEnvironments = () => {
+  environmentType.value.selectedTeam = undefined
+  updateEnvironmentType("my-environments")
+  adapter.changeTeamID(undefined)
+}
+
+const updateSelectedTeam = (newSelectedTeam: TeamWorkspace | undefined) => {
+  if (newSelectedTeam) {
+    adapter.changeTeamID(newSelectedTeam.teamID)
+    environmentType.value.selectedTeam = newSelectedTeam
+    REMEMBERED_TEAM_ID.value = newSelectedTeam.teamID
+    updateEnvironmentType("team-environments")
   }
+}
+const updateEnvironmentType = (newEnvironmentType: EnvironmentType) => {
+  environmentType.value.type = newEnvironmentType
+}
+
+const workspace = workspaceService.currentWorkspace
+
+// Switch to my environments if workspace is personal and to team environments if workspace is team
+// also resets selected environment if workspace is personal and the previous selected environment was a team environment
+watch(
+  workspace,
+  (newWorkspace) => {
+    const { type: newWorkspaceType } = newWorkspace
+
+    if (newWorkspaceType === "personal") {
+      switchToMyEnvironments()
+    } else {
+      updateSelectedTeam(newWorkspace)
+    }
+
+    const newTeamID =
+      newWorkspaceType === "team" ? newWorkspace.teamID : undefined
+
+    // Set active environment to the `No environment` state
+    // if navigating away from a team workspace
+    if (
+      selectedEnvironmentIndex.value.type === "TEAM_ENV" &&
+      selectedEnvironmentIndex.value.teamID !== newTeamID
+    ) {
+      setSelectedEnvironmentIndex({
+        type: "NO_ENV_SELECTED",
+      })
+    }
+  },
+  { immediate: true }
 )
 
 watch(
   () => currentUser.value,
   (newValue) => {
     if (!newValue) {
-      updateEnvironmentType("my-environments")
+      switchToMyEnvironments()
     }
   }
 )
 
+const showConfirmRemoveEnvModal = ref(false)
+const showModalNew = ref(false)
 const showModalDetails = ref(false)
 const action = ref<"new" | "edit">("edit")
 const editingEnvironmentIndex = ref<"Global" | null>(null)
 const editingVariableName = ref("")
+const editingVariableValue = ref("")
+const secretOptionSelected = ref(false)
+const duplicateGlobalEnvironmentLoading = ref(false)
+
+const position = ref({ top: 0, left: 0 })
+
+const displayModalNew = (shouldDisplay: boolean) => {
+  showModalNew.value = shouldDisplay
+}
 
 const displayModalEdit = (shouldDisplay: boolean) => {
   action.value = "edit"
@@ -271,27 +217,99 @@ const displayModalEdit = (shouldDisplay: boolean) => {
 const editEnvironment = (environmentIndex: "Global") => {
   editingEnvironmentIndex.value = environmentIndex
   action.value = "edit"
+  editingVariableName.value = ""
   displayModalEdit(true)
+}
+
+const duplicateGlobalEnvironment = async () => {
+  if (workspace.value.type === "team") {
+    duplicateGlobalEnvironmentLoading.value = true
+
+    await pipe(
+      createTeamEnvironment(
+        JSON.stringify(globalEnvironment.value.variables),
+        workspace.value.teamID,
+        `Global - ${t("action.duplicate")}`
+      ),
+      TE.match(
+        (err: GQLError<string>) => {
+          console.error(err)
+
+          toast.error(t(getEnvActionErrorMessage(err)))
+        },
+        () => {
+          toast.success(t("environment.duplicated"))
+        }
+      )
+    )()
+
+    duplicateGlobalEnvironmentLoading.value = false
+
+    return
+  }
+
+  createEnvironment(
+    `Global - ${t("action.duplicate")}`,
+    cloneDeep(getGlobalVariables())
+  )
+
+  toast.success(`${t("environment.duplicated")}`)
+}
+
+const removeSelectedEnvironment = () => {
+  const selectedEnvIndex = getSelectedEnvironmentIndex()
+  if (selectedEnvIndex?.type === "NO_ENV_SELECTED") return
+
+  if (selectedEnvIndex?.type === "MY_ENV") {
+    deleteEnvironment(selectedEnvIndex.index)
+    toast.success(`${t("state.deleted")}`)
+  }
+
+  if (selectedEnvIndex?.type === "TEAM_ENV") {
+    pipe(
+      deleteTeamEnvironment(selectedEnvIndex.teamEnvID),
+      TE.match(
+        (err: GQLError<string>) => {
+          console.error(err)
+        },
+        () => {
+          toast.success(`${t("team_environment.deleted")}`)
+        }
+      )
+    )()
+  }
 }
 
 const resetSelectedData = () => {
   editingEnvironmentIndex.value = null
+  editingVariableName.value = ""
+  editingVariableValue.value = ""
+  secretOptionSelected.value = false
 }
 
+defineActionHandler("modals.environment.new", () => {
+  action.value = "new"
+  showModalDetails.value = true
+})
+
+defineActionHandler("modals.environment.delete-selected", () => {
+  showConfirmRemoveEnvModal.value = true
+})
+
+const additionalVars = ref<Environment["variables"]>([])
+
+const envVars = () => [...globalEnv.value.variables, ...additionalVars.value]
+
 defineActionHandler(
-  "modals.my.environment.edit",
-  ({ envName, variableName }) => {
-    editingVariableName.value = variableName
-    envName === "Global" && editEnvironment("Global")
+  "modals.global.environment.update",
+  ({ variables, isSecret }) => {
+    if (variables) {
+      additionalVars.value = variables
+    }
+    secretOptionSelected.value = isSecret ?? false
+    editEnvironment("Global")
+    editingVariableName.value = "Global"
   }
-)
-
-const myEnvironments = useReadonlyStream(environments$, [])
-
-const selectedEnvironmentIndex = useStream(
-  selectedEnvironmentIndex$,
-  { type: "NO_ENV_SELECTED" },
-  setSelectedEnvironmentIndex
 )
 
 /* Checking if there are any changes in the selected team environment when there are any updates
@@ -331,48 +349,9 @@ watch(
   { deep: true }
 )
 
-const selectedEnv = computed(() => {
-  if (selectedEnvironmentIndex.value.type === "MY_ENV") {
-    return {
-      type: "MY_ENV",
-      index: selectedEnvironmentIndex.value.index,
-    }
-  } else if (selectedEnvironmentIndex.value.type === "TEAM_ENV") {
-    const teamEnv = teamEnvironmentList.value.find(
-      (env) =>
-        env.id ===
-        (selectedEnvironmentIndex.value.type === "TEAM_ENV" &&
-          selectedEnvironmentIndex.value.teamEnvID)
-    )
-    if (teamEnv) {
-      return {
-        type: "TEAM_ENV",
-        name: teamEnv.environment.name,
-        teamEnvID: selectedEnvironmentIndex.value.teamEnvID,
-      }
-    } else {
-      selectedEnvironmentIndex.value = { type: "NO_ENV_SELECTED" }
-      return { type: "NO_ENV_SELECTED" }
-    }
-  } else {
-    selectedEnvironmentIndex.value = { type: "NO_ENV_SELECTED" }
-    return { type: "NO_ENV_SELECTED" }
-  }
+defineActionHandler("modals.environment.add", ({ envName, variableName }) => {
+  editingVariableName.value = envName
+  editingVariableValue.value = variableName ?? ""
+  displayModalNew(true)
 })
-
-const getErrorMessage = (err: GQLError<string>) => {
-  if (err.type === "network_error") {
-    return t("error.network_error")
-  } else {
-    switch (err.error) {
-      case "team_environment/not_found":
-        return t("team_environment.not_found")
-      default:
-        return t("error.something_went_wrong")
-    }
-  }
-}
-
-// Template refs
-const tippyActions = ref<TippyComponent | null>(null)
 </script>

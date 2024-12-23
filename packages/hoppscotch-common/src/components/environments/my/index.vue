@@ -1,67 +1,77 @@
 <template>
   <div>
     <div
-      class="sticky z-10 flex justify-between flex-1 flex-shrink-0 overflow-x-auto border-b top-upperPrimaryStickyFold border-dividerLight bg-primary"
+      class="sticky top-upperPrimaryStickyFold z-10 flex flex-1 flex-shrink-0 justify-between overflow-x-auto border-b border-dividerLight bg-primary"
     >
-      <ButtonSecondary
+      <HoppButtonSecondary
         :icon="IconPlus"
         :label="`${t('action.new')}`"
         class="!rounded-none"
         @click="displayModalAdd(true)"
       />
       <div class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
-          to="https://docs.hoppscotch.io/features/environments"
+          to="https://docs.hoppscotch.io/documentation/features/environments"
           blank
           :title="t('app.wiki')"
           :icon="IconHelpCircle"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
-          :icon="IconArchive"
+          :icon="IconImport"
           :title="t('modal.import_export')"
           @click="displayModalImportExport(true)"
         />
       </div>
     </div>
     <EnvironmentsMyEnvironment
-      v-for="(environment, index) in environments"
+      v-for="{ env, index } in alphabeticallySortedPersonalEnvironments"
       :key="`environment-${index}`"
       :environment-index="index"
-      :environment="environment"
+      :environment="env"
       @edit-environment="editEnvironment(index)"
     />
-    <div
-      v-if="environments.length === 0"
-      class="flex flex-col items-center justify-center p-4 text-secondaryLight"
+    <HoppSmartPlaceholder
+      v-if="!alphabeticallySortedPersonalEnvironments.length"
+      :src="`/images/states/${colorMode.value}/blockchain.svg`"
+      :alt="`${t('empty.environments')}`"
+      :text="t('empty.environments')"
     >
-      <img
-        :src="`/images/states/${colorMode.value}/blockchain.svg`"
-        loading="lazy"
-        class="inline-flex flex-col object-contain object-center w-16 h-16 my-4"
-        :alt="`${t('empty.environments')}`"
-      />
-      <span class="pb-4 text-center">
-        {{ t("empty.environments") }}
-      </span>
-      <ButtonSecondary
-        :label="`${t('add.new')}`"
-        filled
-        outline
-        class="mb-4"
-        @click="displayModalAdd(true)"
-      />
-    </div>
+      <template #body>
+        <div class="flex flex-col items-center space-y-4">
+          <span class="text-center text-secondaryLight">
+            {{ t("environment.import_or_create") }}
+          </span>
+          <div class="flex flex-col items-stretch gap-4">
+            <HoppButtonPrimary
+              :icon="IconImport"
+              :label="t('import.title')"
+              filled
+              outline
+              @click="displayModalImportExport(true)"
+            />
+            <HoppButtonSecondary
+              :icon="IconPlus"
+              :label="`${t('add.new')}`"
+              filled
+              outline
+              @click="displayModalAdd(true)"
+            />
+          </div>
+        </div>
+      </template>
+    </HoppSmartPlaceholder>
     <EnvironmentsMyDetails
       :show="showModalDetails"
       :action="action"
       :editing-environment-index="editingEnvironmentIndex"
       :editing-variable-name="editingVariableName"
+      :is-secret-option-selected="secretOptionSelected"
       @hide-modal="displayModalEdit(false)"
     />
     <EnvironmentsImportExport
-      :show="showModalImportExport"
+      v-if="showModalImportExport"
       environment-type="MY_ENV"
       @hide-modal="displayModalImportExport(false)"
     />
@@ -69,27 +79,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, computed } from "vue"
 import { environments$ } from "~/newstore/environments"
 import { useColorMode } from "~/composables/theming"
 import { useReadonlyStream } from "@composables/stream"
 import { useI18n } from "~/composables/i18n"
-import IconArchive from "~icons/lucide/archive"
 import IconPlus from "~icons/lucide/plus"
+import IconImport from "~icons/lucide/folder-down"
 import IconHelpCircle from "~icons/lucide/help-circle"
-import { Environment } from "@hoppscotch/data"
 import { defineActionHandler } from "~/helpers/actions"
+import { sortPersonalEnvironmentsAlphabetically } from "~/helpers/utils/sortEnvironmentsAlphabetically"
 
 const t = useI18n()
 const colorMode = useColorMode()
 
 const environments = useReadonlyStream(environments$, [])
 
+// Sort environments alphabetically by default
+const alphabeticallySortedPersonalEnvironments = computed(() =>
+  sortPersonalEnvironmentsAlphabetically(environments.value, "asc")
+)
+
 const showModalImportExport = ref(false)
 const showModalDetails = ref(false)
 const action = ref<"new" | "edit">("edit")
 const editingEnvironmentIndex = ref<number | null>(null)
 const editingVariableName = ref("")
+const secretOptionSelected = ref(false)
 
 const displayModalAdd = (shouldDisplay: boolean) => {
   action.value = "new"
@@ -111,18 +127,21 @@ const editEnvironment = (environmentIndex: number) => {
 }
 const resetSelectedData = () => {
   editingEnvironmentIndex.value = null
+  editingVariableName.value = ""
+  secretOptionSelected.value = false
 }
 
 defineActionHandler(
   "modals.my.environment.edit",
-  ({ envName, variableName }) => {
-    editingVariableName.value = variableName
-    const envIndex: number = environments.value.findIndex(
-      (environment: Environment) => {
-        return environment.name === envName
-      }
+  ({ envName, variableName, isSecret }) => {
+    if (variableName) editingVariableName.value = variableName
+    const env = alphabeticallySortedPersonalEnvironments.value.find(
+      ({ env }) => env.name === envName
     )
-    if (envName !== "Global") editEnvironment(envIndex)
+    if (envName !== "Global" && env) {
+      editEnvironment(env.index)
+      secretOptionSelected.value = isSecret ?? false
+    }
   }
 )
 </script>

@@ -1,20 +1,20 @@
 <template>
-  <SmartModal v-if="show" dialog :title="t('mqtt.new')" @close="hideModal">
+  <HoppSmartModal v-if="show" dialog :title="t('mqtt.new')" @close="hideModal">
     <template #body>
-      <div class="flex justify-between mb-4">
+      <div class="mb-4 flex justify-between">
         <div
-          class="flex items-center border divide-x rounded border-divider divide-divider"
+          class="flex items-center divide-x divide-divider rounded border border-divider"
         >
           <label class="mx-4">
             {{ t("mqtt.qos") }}
           </label>
           <tippy interactive trigger="click" theme="popover">
-            <span class="select-wrapper">
-              <ButtonSecondary class="pr-8" :label="`${QoS}`" />
-            </span>
+            <HoppSmartSelectWrapper>
+              <HoppButtonSecondary class="pr-8" :label="`${QoS}`" />
+            </HoppSmartSelectWrapper>
             <template #content="{ hide }">
               <div class="flex flex-col" role="menu">
-                <SmartItem
+                <HoppSmartItem
                   v-for="item in QOS_VALUES"
                   :key="`qos-${item}`"
                   :label="`${item}`"
@@ -35,7 +35,7 @@
       <div class="relative flex flex-col">
         <input
           id="selectLabelAdd"
-          v-model="name"
+          v-model="editingName"
           v-focus
           class="input floating-input"
           placeholder=" "
@@ -51,30 +51,30 @@
             v-tippy="{ theme: 'tooltip' }"
             :title="t('mqtt.color')"
             for="select-color"
-            class="absolute inset-0 flex items-center justify-center group hover:cursor-pointer"
+            class="group absolute inset-0 flex items-center justify-center hover:cursor-pointer"
           >
             <icon-lucide-brush
-              class="transition opacity-80 svg-icons group-hover:opacity-100 text-accentContrast"
+              class="svg-icons text-accentContrast opacity-80 transition group-hover:opacity-100"
             />
           </label>
           <input
             id="select-color"
             v-model="color"
             type="color"
-            class="w-8 h-8 p-1 rounded bg-primary color-picker"
+            class="color-picker h-8 w-8 rounded bg-primary p-1"
           />
         </span>
       </div>
     </template>
     <template #footer>
       <span class="flex space-x-2">
-        <ButtonPrimary
+        <HoppButtonPrimary
           :label="t('mqtt.subscribe')"
           :loading="loadingState"
           outline
           @click="addNewSubscription"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           :label="t('action.cancel')"
           outline
           filled
@@ -82,7 +82,7 @@
         />
       </span>
     </template>
-  </SmartModal>
+  </HoppSmartModal>
 </template>
 
 <script lang="ts" setup>
@@ -112,14 +112,14 @@ const emit = defineEmits<{
   (e: "submit", body: MQTTTopic): void
 }>()
 
-const QoS = ref<typeof QOS_VALUES[number]>(2)
-const name = ref("")
+const QoS = ref<(typeof QOS_VALUES)[number]>(2)
+const editingName = ref("")
 const color = ref("#f58290")
 
 watch(
   () => props.show,
   () => {
-    name.value = ""
+    editingName.value = ""
     QoS.value = 2
     const randomColor = Math.floor(Math.random() * 16777215).toString(16)
     color.value = `#${randomColor}`
@@ -127,18 +127,18 @@ watch(
 )
 
 const addNewSubscription = () => {
-  if (!name.value) {
+  if (!editingName.value) {
     toastr.error(t("mqtt.invalid_topic").toString())
     return
   }
   emit("submit", {
-    name: name.value,
+    name: editingName.value,
     qos: QoS.value,
     color: color.value,
   })
 }
 const hideModal = () => {
-  name.value = ""
+  editingName.value = ""
   QoS.value = 2
   emit("hide-modal")
 }

@@ -2,7 +2,6 @@ import { ref } from "vue"
 import {
   createClient,
   TypedDocumentNode,
-  dedupExchange,
   OperationContext,
   fetchExchange,
   makeOperation,
@@ -12,21 +11,18 @@ import {
   CombinedError,
   Operation,
   OperationResult,
+  Client,
+  AnyVariables,
 } from "@urql/core"
-import { authExchange } from "@urql/exchange-auth"
-import { devtoolsExchange } from "@urql/devtools"
+import { AuthConfig, authExchange } from "@urql/exchange-auth"
+// import { devtoolsExchange } from "@urql/devtools"
 import { SubscriptionClient } from "subscriptions-transport-ws"
 import * as E from "fp-ts/Either"
 import * as TE from "fp-ts/TaskEither"
 import { pipe, constVoid, flow } from "fp-ts/function"
 import { subscribe, pipe as wonkaPipe } from "wonka"
 import { filter, map, Subject } from "rxjs"
-import {
-  authIdToken$,
-  getAuthIDToken,
-  probableUser$,
-  waitProbableLoginToConfirm,
-} from "~/helpers/fb/auth"
+import { platform } from "~/platform"
 
 // TODO: Implement caching
 
@@ -57,11 +53,7 @@ export const gqlClientError$ = new Subject<GQLClientErrorEvent>()
 const createSubscriptionClient = () => {
   return new SubscriptionClient(BACKEND_WS_URL, {
     reconnect: true,
-    connectionParams: () => {
-      return {
-        authorization: `Bearer ${authIdToken$.value}`,
-      }
-    },
+    connectionParams: () => platform.auth.getBackendHeaders(),
     connectionCallback(error) {
       if (error?.length > 0) {
         gqlClientError$.next({
@@ -75,42 +67,42 @@ const createSubscriptionClient = () => {
 
 const createHoppClient = () => {
   const exchanges = [
-    devtoolsExchange,
-    dedupExchange,
-    authExchange({
-      addAuthToOperation({ authState, operation }) {
-        if (!authState || !authState.authToken) {
-          return operation
-        }
+    // devtoolsExchange,
+    authExchange(async (): Promise<AuthConfig> => {
+      const probableUser = platform.auth.getProbableUser()
+      if (probableUser !== null)
+        await platform.auth.waitProbableLoginToConfirm()
 
-        const fetchOptions =
-          typeof operation.context.fetchOptions === "function"
-            ? operation.context.fetchOptions()
-            : operation.context.fetchOptions || {}
+      return {
+        addAuthToOperation(operation) {
+          const fetchOptions =
+            typeof operation.context.fetchOptions === "function"
+              ? operation.context.fetchOptions()
+              : operation.context.fetchOptions || {}
 
-        return makeOperation(operation.kind, operation, {
-          ...operation.context,
-          fetchOptions: {
-            ...fetchOptions,
-            headers: {
-              ...fetchOptions.headers,
-              Authorization: `Bearer ${authState.authToken}`,
+          const authHeaders = platform.auth.getBackendHeaders()
+
+          return makeOperation(operation.kind, operation, {
+            ...operation.context,
+            fetchOptions: {
+              ...fetchOptions,
+              headers: {
+                ...fetchOptions.headers,
+                ...authHeaders,
+              },
             },
-          },
-        })
-      },
-      willAuthError({ authState }) {
-        return !authState || !authState.authToken
-      },
-      getAuth: async () => {
-        if (!probableUser$.value) return { authToken: null }
-
-        await waitProbableLoginToConfirm()
-
-        return {
-          authToken: getAuthIDToken(),
-        }
-      },
+          })
+        },
+        willAuthError() {
+          return platform.auth.willBackendHaveAuthError()
+        },
+        didAuthError() {
+          return false
+        },
+        async refreshAuth() {
+          // TODO
+        },
+      }
     }),
     fetchExchange,
     errorExchange({
@@ -137,35 +129,44 @@ const createHoppClient = () => {
   return createClient({
     url: BACKEND_GQL_URL,
     exchanges,
+    ...(platform.auth.getGQLClientOptions
+      ? platform.auth.getGQLClientOptions()
+      : {}),
   })
 }
 
 let subscriptionClient: SubscriptionClient | null
-export const client = ref(createHoppClient())
+export const client = ref<Client>()
 
-authIdToken$.subscribe((idToken) => {
-  // triggering reconnect by closing the websocket client
-  if (idToken && subscriptionClient) {
-    subscriptionClient?.client?.close()
-  }
-
-  // creating new subscription
-  if (idToken && !subscriptionClient) {
-    subscriptionClient = createSubscriptionClient()
-  }
-
-  // closing existing subscription client.
-  if (!idToken && subscriptionClient) {
-    subscriptionClient.close()
-    subscriptionClient = null
-  }
-
+export function initBackendGQLClient() {
   client.value = createHoppClient()
-})
 
-type RunQueryOptions<T = any, V = object> = {
+  platform.auth.onBackendGQLClientShouldReconnect(() => {
+    const currentUser = platform.auth.getCurrentUser()
+
+    // triggering reconnect by closing the websocket client
+    if (currentUser && subscriptionClient) {
+      subscriptionClient?.client?.close()
+    }
+
+    // creating new subscription
+    if (currentUser && !subscriptionClient) {
+      subscriptionClient = createSubscriptionClient()
+    }
+
+    // closing existing subscription client.
+    if (!currentUser && subscriptionClient) {
+      subscriptionClient.close()
+      subscriptionClient = null
+    }
+
+    client.value = createHoppClient()
+  })
+}
+
+type RunQueryOptions<T = any, V = AnyVariables> = {
   query: TypedDocumentNode<T, V>
-  variables?: V
+  variables: V
 }
 
 /**
@@ -181,11 +182,15 @@ export type GQLError<T extends string> =
       error: T
     }
 
-export const runGQLQuery = <DocType, DocVarType, DocErrorType extends string>(
+export const runGQLQuery = <
+  DocType,
+  DocVarType extends AnyVariables,
+  DocErrorType extends string,
+>(
   args: RunQueryOptions<DocType, DocVarType>
 ): Promise<E.Either<GQLError<DocErrorType>, DocType>> => {
   const request = createRequest<DocType, DocVarType>(args.query, args.variables)
-  const source = client.value.executeQuery(request, {
+  const source = client.value!.executeQuery(request, {
     requestPolicy: "network-only",
   })
 
@@ -243,14 +248,14 @@ export const runGQLQuery = <DocType, DocVarType, DocErrorType extends string>(
 // Make sure to handle cases if the subscription fires with the same update multiple times
 export const runGQLSubscription = <
   DocType,
-  DocVarType,
-  DocErrorType extends string
+  DocVarType extends AnyVariables,
+  DocErrorType extends string,
 >(
   args: RunQueryOptions<DocType, DocVarType>
 ) => {
   const result$ = new Subject<E.Either<GQLError<DocErrorType>, DocType>>()
 
-  const source = client.value.executeSubscription(
+  const source = client.value!.executeSubscription(
     createRequest(args.query, args.variables)
   )
 
@@ -318,7 +323,8 @@ export const runAuthOnlyGQLSubscription = flow(
         ) {
           sub.unsubscribe()
           return null
-        } else return res
+        }
+        return res
       }),
       filter((res): res is Exclude<typeof res, null> => res !== null)
     )
@@ -333,17 +339,17 @@ export const parseGQLErrorString = (s: string) =>
 export const runMutation = <
   DocType,
   DocVariables extends object | undefined,
-  DocErrors extends string
+  DocErrors extends string,
 >(
   mutation: TypedDocumentNode<DocType, DocVariables>,
-  variables?: DocVariables,
+  variables: DocVariables,
   additionalConfig?: Partial<OperationContext>
 ): TE.TaskEither<GQLError<DocErrors>, DocType> =>
   pipe(
     TE.tryCatch(
       () =>
-        client.value
-          .mutation(mutation, variables, {
+        client
+          .value!.mutation(mutation, variables, {
             requestPolicy: "cache-and-network",
             ...additionalConfig,
           })

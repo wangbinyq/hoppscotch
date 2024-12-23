@@ -8,6 +8,14 @@ import { FieldEquals, objectFieldIncludes } from "../typeutils"
 // Hoppscotch support HAR Spec 1.2
 // For more info on the spec: http://www.softwareishard.com/blog/har-12-spec/
 
+const splitHarQueryParams = (sep: string) => {
+  return (s: string): Array<string> => {
+    const out = pipe(s, S.split(sep))
+    const [key, ...rest] = out
+    return [key, rest.join(sep)] // Split by the first colon and join the rest
+  }
+}
+
 const buildHarHeaders = (req: HoppRESTRequest): Har.Header[] => {
   return req.headers
     .filter((header) => header.active)
@@ -43,7 +51,7 @@ const buildHarPostParams = (
         flow(
           // Define how each lines are parsed
 
-          S.split(":"), // Split by ":"
+          splitHarQueryParams(":"), // Split by the first ":"
           RA.map(S.trim), // Remove trailing spaces in key/value begins and ends
           ([key, value]) => ({
             // Convert into a proper key value definition
@@ -54,27 +62,36 @@ const buildHarPostParams = (
       ),
       RA.toArray
     )
-  } else {
-    // FormData has its own format
-    return req.body.body.flatMap((entry) => {
-      if (entry.isFile) {
-        // We support multiple files
-        return entry.value.map(
-          (file) =>
-            <Har.Param>{
-              name: entry.key,
-              fileName: entry.key, // TODO: Blob doesn't contain file info, anyway to bring file name here ?
-              contentType: file.type,
-            }
-        )
-      } else {
-        return {
-          name: entry.key,
-          value: entry.value,
-        }
-      }
-    })
   }
+  // FormData has its own format
+  return req.body.body.flatMap((entry) => {
+    if (entry.isFile) {
+      // We support multiple files
+      return entry.value.map(
+        (file) =>
+          <Har.Param>{
+            name: entry.key,
+            fileName: entry.key, // TODO: Blob doesn't contain file info, anyway to bring file name here ?
+            contentType: entry.contentType ? entry.contentType : file?.type,
+          }
+      )
+    }
+
+    if (entry.contentType) {
+      return {
+        name: entry.key,
+        value: entry.value,
+        fileName: entry.key,
+        contentType: entry.contentType,
+      }
+    }
+
+    return {
+      name: entry.key,
+      value: entry.value,
+      contentType: entry.contentType,
+    }
+  })
 }
 
 const buildHarPostData = (req: HoppRESTRequest): Har.PostData | undefined => {
@@ -98,7 +115,11 @@ const buildHarPostData = (req: HoppRESTRequest): Har.PostData | undefined => {
   }
 }
 
-export const buildHarRequest = (req: HoppRESTRequest): Har.Request => {
+export const buildHarRequest = (
+  req: HoppRESTRequest
+): Har.Request & {
+  postData: Har.PostData & Exclude<Har.PostData, undefined>
+} => {
   return {
     bodySize: -1, // TODO: It would be cool if we can calculate the body size
     headersSize: -1, // TODO: It would be cool if we can calculate the header size
@@ -108,6 +129,9 @@ export const buildHarRequest = (req: HoppRESTRequest): Har.Request => {
     method: req.method,
     queryString: buildHarQueryStrings(req),
     url: req.endpoint,
-    postData: buildHarPostData(req),
+    postData: buildHarPostData(req) ?? {
+      mimeType: "x-unknown",
+      params: [],
+    },
   }
 }

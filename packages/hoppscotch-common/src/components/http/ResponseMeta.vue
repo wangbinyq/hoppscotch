@@ -1,64 +1,64 @@
 <template>
   <div
-    class="sticky top-0 z-10 flex items-start justify-center flex-shrink-0 p-4 overflow-auto overflow-x-auto bg-primary whitespace-nowrap"
+    class="sticky top-0 z-10 flex flex-shrink-0 items-center justify-center overflow-auto overflow-x-auto whitespace-nowrap bg-primary p-4"
   >
-    <AppShortcutsPrompt v-if="response == null" class="flex-1" />
-    <div v-else class="flex flex-col flex-1">
+    <AppShortcutsPrompt v-if="response == null && !isEmbed" class="flex-1" />
+
+    <div v-if="response == null && isEmbed">
+      <HoppButtonSecondary
+        :label="`${t('app.documentation')}`"
+        to="https://docs.hoppscotch.io/documentation/features/rest-api-testing#response"
+        :icon="IconExternalLink"
+        blank
+        outline
+        reverse
+      />
+    </div>
+
+    <div v-else-if="response" class="flex flex-1 flex-col">
       <div
         v-if="response.type === 'loading'"
         class="flex flex-col items-center justify-center"
       >
-        <SmartSpinner class="my-4" />
+        <HoppSmartSpinner class="my-4" />
         <span class="text-secondaryLight">{{ t("state.loading") }}</span>
       </div>
-      <div
+
+      <component
+        :is="response.component"
+        v-if="response.type === 'extension_error'"
+        class="flex-1"
+      />
+      <HoppSmartPlaceholder
         v-if="response.type === 'network_fail'"
-        class="flex flex-col items-center justify-center flex-1 p-4"
+        :src="`/images/states/${colorMode.value}/upload_error.svg`"
+        :alt="`${t('error.network_fail')}`"
+        :heading="t('error.network_fail')"
+        :text="t('helpers.network_fail')"
       >
-        <img
-          :src="`/images/states/${colorMode.value}/youre_lost.svg`"
-          loading="lazy"
-          class="inline-flex flex-col object-contain object-center w-32 h-32 my-4"
-          :alt="`${t('error.network_fail')}`"
-        />
-        <span class="mb-2 font-semibold text-center">
-          {{ t("error.network_fail") }}
-        </span>
-        <span
-          class="max-w-sm mb-6 text-center whitespace-normal text-secondaryLight"
-        >
-          {{ t("helpers.network_fail") }}
-        </span>
-        <AppInterceptor class="p-2 border rounded border-dividerLight" />
-      </div>
-      <div
+        <template #body>
+          <AppInterceptor class="rounded border border-dividerLight p-2" />
+        </template>
+      </HoppSmartPlaceholder>
+      <HoppSmartPlaceholder
         v-if="response.type === 'script_fail'"
-        class="flex flex-col items-center justify-center flex-1 p-4"
+        :src="`/images/states/${colorMode.value}/upload_error.svg`"
+        :alt="`${t('error.script_fail')}`"
+        :label="t('error.script_fail')"
+        :text="t('helpers.script_fail')"
       >
-        <img
-          :src="`/images/states/${colorMode.value}/youre_lost.svg`"
-          loading="lazy"
-          class="inline-flex flex-col object-contain object-center w-32 h-32 my-4"
-          :alt="`${t('error.script_fail')}`"
-        />
-        <span class="mb-2 font-semibold text-center">
-          {{ t("error.script_fail") }}
-        </span>
-        <span
-          class="max-w-sm mb-6 text-center whitespace-normal text-secondaryLight"
-        >
-          {{ t("helpers.script_fail") }}
-        </span>
-        <div
-          class="w-full px-4 py-2 overflow-auto font-mono text-red-400 whitespace-normal rounded bg-primaryLight"
-        >
-          {{ response.error.name }}: {{ response.error.message }}<br />
-          {{ response.error.stack }}
-        </div>
-      </div>
+        <template #body>
+          <div
+            class="mt-2 w-full overflow-auto whitespace-normal rounded bg-primaryLight px-4 py-2 font-mono text-red-400"
+          >
+            {{ response.error.name }}: {{ response.error.message }}<br />
+            {{ response.error.stack }}
+          </div>
+        </template>
+      </HoppSmartPlaceholder>
       <div
         v-if="response.type === 'success' || response.type === 'fail'"
-        class="flex items-center font-semibold text-tiny"
+        class="flex items-center text-tiny font-semibold"
       >
         <div
           :class="statusCategory.className"
@@ -67,7 +67,12 @@
           <span v-if="response.statusCode">
             <span class="text-secondary"> {{ t("response.status") }}: </span>
             {{ `${response.statusCode}\xA0 • \xA0`
-            }}{{ getStatusCodeReasonPhrase(response.statusCode) }}
+            }}{{
+              getStatusCodeReasonPhrase(
+                response.statusCode,
+                response.statusText
+              )
+            }}
           </span>
           <span v-if="response.meta && response.meta.responseDuration">
             <span class="text-secondary"> {{ t("response.time") }}: </span>
@@ -92,6 +97,15 @@
         </div>
       </div>
     </div>
+    <AppInspection
+      v-if="response?.type !== 'loading'"
+      :inspection-results="tabResults"
+      :class="[
+        response === null || response?.type === 'network_fail'
+          ? 'absolute right-2 top-2'
+          : '-m-2 ml-2',
+      ]"
+    />
   </div>
 </template>
 
@@ -102,12 +116,18 @@ import type { HoppRESTResponse } from "~/helpers/types/HoppRESTResponse"
 import { useI18n } from "@composables/i18n"
 import { useColorMode } from "@composables/theming"
 import { getStatusCodeReasonPhrase } from "~/helpers/utils/statusCodes"
+import { useService } from "dioc/vue"
+import { InspectionService } from "~/services/inspection"
+import { RESTTabService } from "~/services/tab/rest"
+import IconExternalLink from "~icons/lucide/external-link"
 
 const t = useI18n()
 const colorMode = useColorMode()
+const tabs = useService(RESTTabService)
 
 const props = defineProps<{
-  response: HoppRESTResponse
+  response: HoppRESTResponse | null | undefined
+  isEmbed?: boolean
 }>()
 
 /**
@@ -118,10 +138,13 @@ const props = defineProps<{
  */
 const readableResponseSize = computed(() => {
   if (
+    props.response === null ||
+    props.response === undefined ||
     props.response.type === "loading" ||
     props.response.type === "network_fail" ||
     props.response.type === "script_fail" ||
-    props.response.type === "fail"
+    props.response.type === "fail" ||
+    props.response.type === "extension_error"
   )
     return undefined
 
@@ -135,10 +158,13 @@ const readableResponseSize = computed(() => {
 
 const statusCategory = computed(() => {
   if (
+    props.response === null ||
+    props.response === undefined ||
     props.response.type === "loading" ||
     props.response.type === "network_fail" ||
     props.response.type === "script_fail" ||
-    props.response.type === "fail"
+    props.response.type === "fail" ||
+    props.response.type === "extension_error"
   )
     return {
       name: "error",
@@ -146,4 +172,11 @@ const statusCategory = computed(() => {
     }
   return findStatusGroup(props.response.statusCode)
 })
+
+const inspectionService = useService(InspectionService)
+
+const tabResults = inspectionService.getResultViewFor(
+  tabs.currentTabID.value,
+  (result) => result.locations.type === "response"
+)
 </script>

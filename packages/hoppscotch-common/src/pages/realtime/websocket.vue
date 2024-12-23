@@ -2,47 +2,45 @@
   <AppPaneLayout layout-id="websocket">
     <template #primary>
       <div
-        class="sticky top-0 z-10 flex flex-shrink-0 p-4 space-x-2 overflow-x-auto bg-primary"
+        class="sticky top-0 z-10 flex flex-shrink-0 space-x-2 overflow-x-auto bg-primary p-4"
       >
-        <div class="inline-flex flex-1 space-x-2">
-          <input
-            id="websocket-url"
-            v-model="url"
-            class="w-full px-4 py-2 border rounded bg-primaryLight border-divider text-secondaryDark"
-            type="url"
-            autocomplete="off"
-            spellcheck="false"
-            :class="{ error: !isUrlValid }"
-            :placeholder="`${t('websocket.url')}`"
-            :disabled="
-              connectionState === 'CONNECTED' ||
-              connectionState === 'CONNECTING'
-            "
-            @keyup.enter="isUrlValid ? toggleConnection() : null"
-          />
-          <ButtonPrimary
-            id="connect"
-            :disabled="!isUrlValid"
-            class="w-32"
-            name="connect"
-            :label="
-              connectionState === 'CONNECTING'
-                ? t('action.connecting')
-                : connectionState === 'DISCONNECTED'
-                ? t('action.connect')
-                : t('action.disconnect')
-            "
-            :loading="connectionState === 'CONNECTING'"
-            @click="toggleConnection"
-          />
-        </div>
+        <HoppSmartInput
+          v-model="url"
+          type="url"
+          :autofocus="false"
+          styles="!inline-flex flex-1 space-x-2"
+          input-styles="w-full px-4 py-2 border rounded !bg-primaryLight border-divider text-secondaryDark"
+          :placeholder="`${t('websocket.url')}`"
+          :disabled="
+            connectionState === 'CONNECTED' || connectionState === 'CONNECTING'
+          "
+          @submit="isUrlValid ? toggleConnection() : null"
+        >
+          <template #button>
+            <HoppButtonPrimary
+              id="connect"
+              :disabled="!isUrlValid"
+              class="w-32"
+              name="connect"
+              :label="
+                connectionState === 'CONNECTING'
+                  ? t('action.connecting')
+                  : connectionState === 'DISCONNECTED'
+                    ? t('action.connect')
+                    : t('action.disconnect')
+              "
+              :loading="connectionState === 'CONNECTING'"
+              @click="toggleConnection"
+            />
+          </template>
+        </HoppSmartInput>
       </div>
-      <SmartTabs
+      <HoppSmartTabs
         v-model="selectedTab"
         styles="sticky overflow-x-auto flex-shrink-0 bg-primary top-upperPrimaryStickyFold z-10"
         render-inactive-tabs
       >
-        <SmartTab
+        <HoppSmartTab
           :id="'communication'"
           :label="`${t('websocket.communication')}`"
         >
@@ -51,22 +49,22 @@
             sticky-header-styles="top-upperSecondaryStickyFold"
             @send-message="sendMessage($event)"
           />
-        </SmartTab>
-        <SmartTab :id="'protocols'" :label="`${t('websocket.protocols')}`">
+        </HoppSmartTab>
+        <HoppSmartTab :id="'protocols'" :label="`${t('websocket.protocols')}`">
           <div
-            class="sticky z-10 flex items-center justify-between flex-shrink-0 pl-4 overflow-x-auto border-b bg-primary border-dividerLight top-upperSecondaryStickyFold"
+            class="sticky top-upperSecondaryStickyFold z-10 flex flex-shrink-0 items-center justify-between overflow-x-auto border-b border-dividerLight bg-primary pl-4"
           >
-            <label class="font-semibold truncate text-secondaryLight">
+            <label class="truncate font-semibold text-secondaryLight">
               {{ t("websocket.protocols") }}
             </label>
             <div class="flex">
-              <ButtonSecondary
+              <HoppButtonSecondary
                 v-tippy="{ theme: 'tooltip' }"
                 :title="t('action.clear_all')"
                 :icon="IconTrash2"
                 @click="clearContent"
               />
-              <ButtonSecondary
+              <HoppButtonSecondary
                 v-tippy="{ theme: 'tooltip' }"
                 :title="t('add.new')"
                 :icon="IconPlus"
@@ -86,10 +84,10 @@
           >
             <template #item="{ element: { protocol }, index }">
               <div
-                class="flex border-b divide-x divide-dividerLight border-dividerLight draggable-content group"
+                class="draggable-content group flex divide-x divide-dividerLight border-b border-dividerLight"
               >
                 <span>
-                  <ButtonSecondary
+                  <HoppButtonSecondary
                     v-tippy="{
                       theme: 'tooltip',
                       delay: [500, 20],
@@ -99,9 +97,9 @@
                           : null,
                     }"
                     :icon="IconGripVertical"
-                    class="cursor-auto text-primary hover:text-primary"
+                    class="opacity-0"
                     :class="{
-                      'draggable-handle group-hover:text-secondaryLight !cursor-grab':
+                      'draggable-handle cursor-grab group-hover:opacity-100':
                         index !== protocols?.length - 1,
                     }"
                     tabindex="-1"
@@ -109,7 +107,7 @@
                 </span>
                 <input
                   v-model="protocol.value"
-                  class="flex flex-1 px-4 py-2 bg-transparent"
+                  class="flex flex-1 bg-transparent px-4 py-2"
                   :placeholder="`${t('count.protocol', { count: index + 1 })}`"
                   name="message"
                   type="text"
@@ -122,7 +120,7 @@
                   "
                 />
                 <span>
-                  <ButtonSecondary
+                  <HoppButtonSecondary
                     v-tippy="{ theme: 'tooltip' }"
                     :title="
                       protocol.hasOwnProperty('active')
@@ -148,7 +146,7 @@
                   />
                 </span>
                 <span>
-                  <ButtonSecondary
+                  <HoppButtonSecondary
                     v-tippy="{ theme: 'tooltip' }"
                     :title="t('action.remove')"
                     :icon="IconTrash"
@@ -159,27 +157,19 @@
               </div>
             </template>
           </draggable>
-          <div
+          <HoppSmartPlaceholder
             v-if="protocols.length === 0"
-            class="flex flex-col items-center justify-center p-4 text-secondaryLight"
-          >
-            <img
-              :src="`/images/states/${colorMode.value}/add_category.svg`"
-              loading="lazy"
-              class="inline-flex flex-col object-contain object-center w-16 h-16 my-4"
-              :alt="`${t('empty.protocols')}`"
-            />
-            <span class="mb-4 text-center">
-              {{ t("empty.protocols") }}
-            </span>
-          </div>
-        </SmartTab>
-      </SmartTabs>
+            :src="`/images/states/${colorMode.value}/add_category.svg`"
+            :alt="`${t('empty.protocols')}`"
+            :text="`${t('empty.protocols')}`"
+          />
+        </HoppSmartTab>
+      </HoppSmartTabs>
     </template>
     <template #secondary>
       <RealtimeLog
         :title="t('websocket.log')"
-        :log="(log as LogEntryData[])"
+        :log="log as LogEntryData[]"
         @delete="clearLogEntries()"
       />
     </template>
@@ -194,7 +184,7 @@ import IconCheckCircle from "~icons/lucide/check-circle"
 import IconCircle from "~icons/lucide/circle"
 import IconGripVertical from "~icons/lucide/grip-vertical"
 import IconTrash from "~icons/lucide/trash"
-import draggable from "vuedraggable"
+import draggable from "vuedraggable-es"
 import {
   setWSEndpoint,
   WSEndpoint$,

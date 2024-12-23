@@ -2,7 +2,7 @@ import * as E from "fp-ts/Either"
 import { BehaviorSubject } from "rxjs"
 import { GQLError, runGQLQuery } from "../backend/GQLClient"
 import { GetMyTeamsDocument, GetMyTeamsQuery } from "../backend/graphql"
-import { authIdToken$ } from "~/helpers/fb/auth"
+import { platform } from "~/platform"
 
 const BACKEND_PAGE_SIZE = 10
 const POLL_DURATION = 10000
@@ -15,12 +15,19 @@ export default class TeamListAdapter {
   private timeoutHandle: ReturnType<typeof setTimeout> | null
   private isDispose: boolean
 
-  constructor(deferInit = false) {
+  public isInitialized: boolean
+
+  constructor(
+    deferInit = false,
+    private doPolling = true
+  ) {
     this.error$ = new BehaviorSubject<GQLError<string> | null>(null)
     this.loading$ = new BehaviorSubject<boolean>(false)
     this.teamList$ = new BehaviorSubject<GetMyTeamsQuery["myTeams"]>([])
     this.timeoutHandle = null
     this.isDispose = false
+
+    this.isInitialized = false
 
     if (!deferInit) this.initialize()
   }
@@ -29,10 +36,12 @@ export default class TeamListAdapter {
     if (this.timeoutHandle) throw new Error(`Adapter already initialized`)
     if (this.isDispose) throw new Error(`Adapter has been disposed`)
 
+    this.isInitialized = true
+
     const func = async () => {
       await this.fetchList()
 
-      if (!this.isDispose) {
+      if (!this.isDispose && this.doPolling) {
         this.timeoutHandle = setTimeout(() => func(), POLL_DURATION)
       }
     }
@@ -41,14 +50,18 @@ export default class TeamListAdapter {
   }
 
   public dispose() {
+    this.teamList$.next([])
     this.isDispose = true
     clearTimeout(this.timeoutHandle as any)
     this.timeoutHandle = null
+    this.isInitialized = false
   }
 
   async fetchList() {
+    const currentUser = platform.auth.getCurrentUser()
+
     // if the authIdToken is not present, don't fetch the teams list, as it will fail anyway
-    if (!authIdToken$.value) return
+    if (!currentUser) return
 
     this.loading$.next(true)
 

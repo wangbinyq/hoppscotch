@@ -1,7 +1,7 @@
 <template>
   <div v-if="entry" class="divide-y divide-dividerLight">
     <div :style="{ color: entryColor }" class="realtime-log">
-      <div class="flex group">
+      <div class="group flex">
         <div class="flex flex-1 divide-x divide-dividerLight">
           <div class="inline-flex items-center p-2">
             <component
@@ -12,18 +12,18 @@
           </div>
           <div
             v-if="entry.ts !== undefined"
-            class="items-center hidden px-1 w-34 sm:inline-flex"
+            class="w-36 hidden items-center px-1 sm:inline-flex"
           >
             <span
               v-tippy="{ theme: 'tooltip' }"
               :title="relativeTime"
-              class="mx-auto truncate ts-font text-secondaryLight hover:text-secondary hover:text-center"
+              class="mx-auto truncate text-tiny text-secondaryLight hover:text-center hover:text-secondary"
             >
               {{ shortDateTime(entry.ts) }}
             </span>
           </div>
           <div
-            class="inline-grid items-center flex-1 min-w-0 p-2"
+            class="inline-grid min-w-0 flex-1 items-center p-2"
             @click="toggleExpandPayload()"
           >
             <div class="truncate">
@@ -34,14 +34,14 @@
             </div>
           </div>
         </div>
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
           :title="t('action.copy')"
           :icon="copyQueryIcon"
           class="hidden group-hover:inline-flex"
           @click="copyQuery(entry.payload)"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           :icon="IconChevronDown"
           class="transform"
           :class="{ 'rotate-180': !minimized }"
@@ -50,35 +50,35 @@
       </div>
     </div>
     <div v-if="!minimized" class="overflow-hidden bg-primaryContrast">
-      <SmartTabs
+      <HoppSmartTabs
         v-model="selectedTab"
         styles="bg-primaryLight"
         render-inactive-tabs
       >
-        <SmartTab v-if="isJSON(entry.payload)" id="json" label="JSON" />
-        <SmartTab id="raw" label="Raw" />
-      </SmartTabs>
+        <HoppSmartTab v-if="isJSON(entry.payload)" id="json" label="JSON" />
+        <HoppSmartTab id="raw" label="Raw" />
+      </HoppSmartTabs>
       <div
-        class="z-10 flex items-center justify-between pl-4 border-b border-dividerLight top-lowerSecondaryStickyFold"
+        class="top-lowerSecondaryStickyFold z-10 flex items-center justify-between border-b border-dividerLight pl-4"
       >
-        <label class="font-semibold truncate text-secondaryLight">
+        <label class="truncate font-semibold text-secondaryLight">
           {{ t("response.body") }}
         </label>
         <div class="flex">
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip' }"
             :title="t('state.linewrap')"
             :class="{ '!text-accent': linewrapEnabled }"
             :icon="IconWrapText"
             @click.prevent="linewrapEnabled = !linewrapEnabled"
           />
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip' }"
             :title="t('action.download_file')"
             :icon="downloadIcon"
             @click="downloadResponse"
           />
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip' }"
             :title="t('action.copy')"
             :icon="copyIcon"
@@ -89,7 +89,7 @@
       <div ref="editor"></div>
       <div
         v-if="outlinePath && selectedTab === 'json'"
-        class="sticky bottom-0 z-10 flex flex-shrink-0 px-2 overflow-auto overflow-x-auto border-t bg-primaryLight border-dividerLight flex-nowrap"
+        class="sticky bottom-0 z-10 flex flex-shrink-0 flex-nowrap overflow-auto overflow-x-auto border-t border-dividerLight bg-primaryLight px-2"
       >
         <div
           v-for="(item, index) in outlinePath"
@@ -123,7 +123,7 @@
                   tabindex="0"
                   @keyup.escape="hide()"
                 >
-                  <SmartItem
+                  <HoppSmartItem
                     v-for="(arrayMember, astIndex) in item.astParent.values"
                     :key="`ast-${astIndex}`"
                     :label="`${astIndex}`"
@@ -142,7 +142,7 @@
                   tabindex="0"
                   @keyup.escape="hide()"
                 >
-                  <SmartItem
+                  <HoppSmartItem
                     v-for="(objectMember, astIndex) in item.astParent.members"
                     :key="`ast-${astIndex}`"
                     :label="objectMember.key.value"
@@ -160,7 +160,7 @@
                 ref="tippyActions"
                 class="flex flex-col focus:outline-none"
               >
-                <SmartItem
+                <HoppSmartItem
                   label="{}"
                   @click="
                     () => {
@@ -175,7 +175,7 @@
                 ref="tippyActions"
                 class="flex flex-col focus:outline-none"
               >
-                <SmartItem
+                <HoppSmartItem
                   label="[]"
                   @click="
                     () => {
@@ -189,7 +189,7 @@
           </tippy>
           <icon-lucide-chevron-right
             v-if="index + 1 !== outlinePath.length"
-            class="opacity-50 text-secondaryLight svg-icons"
+            class="svg-icons text-secondaryLight opacity-50"
           />
         </div>
       </div>
@@ -209,7 +209,7 @@ import IconWrapText from "~icons/lucide/wrap-text"
 import * as LJSON from "lossless-json"
 import * as O from "fp-ts/Option"
 import { pipe } from "fp-ts/function"
-import { ref, computed, reactive, watch, markRaw } from "vue"
+import { ref, computed, reactive, watch, markRaw, PropType } from "vue"
 import { refAutoReset, useTimeAgo } from "@vueuse/core"
 import { LogEntryData } from "./Log.vue"
 import { useI18n } from "@composables/i18n"
@@ -227,7 +227,16 @@ import { shortDateTime } from "~/helpers/utils/date"
 
 const t = useI18n()
 
-const props = defineProps<{ entry: LogEntryData }>()
+const props = defineProps({
+  entry: {
+    type: Object as PropType<LogEntryData>,
+    required: true,
+  },
+  isOpen: {
+    type: Boolean,
+    default: false,
+  },
+})
 
 // Template refs
 const tippyActions = ref<any | null>(null)
@@ -260,12 +269,12 @@ const ast = computed(() =>
 
 const editorText = computed(() => {
   if (selectedTab.value === "json") return jsonBodyText.value
-  else return logPayload.value
+  return logPayload.value
 })
 
 const editorMode = computed(() => {
   if (selectedTab.value === "json") return "application/ld+json"
-  else return "text/plain"
+  return "text/plain"
 })
 
 const { cursor } = useCodemirror(
@@ -304,7 +313,7 @@ const outlinePath = computed(() =>
 )
 
 // Code for UI Changes
-const minimized = ref(true)
+const minimized = ref(props.isOpen ? false : true)
 watch(minimized, () => {
   selectedTab.value = isJSON(props.entry.payload) ? "json" : "raw"
 })
@@ -317,7 +326,8 @@ const { copyIcon, copyResponse } = useCopyResponse(logPayload)
 
 const { downloadIcon, downloadResponse } = useDownloadResponse(
   "application/json",
-  logPayload
+  logPayload,
+  t("filename.realtime_response")
 )
 
 const copyQueryIcon = refAutoReset<typeof IconCopy | typeof IconCheck>(
@@ -342,7 +352,9 @@ const ENTRY_COLORS = {
 } as const
 
 // Assigns color based on entry event
-const entryColor = computed(() => ENTRY_COLORS[props.entry.event])
+const entryColor = computed(
+  () => props.entry.event && ENTRY_COLORS[props.entry.event]
+)
 
 const ICONS = {
   info: {
@@ -386,17 +398,13 @@ const icon = computed(() => markRaw(ICONS[props.entry.source].icon))
 
 .outline-item {
   @apply cursor-pointer;
-  @apply flex-grow-0 flex-shrink-0;
+  @apply flex-shrink-0 flex-grow-0;
   @apply text-secondaryLight;
   @apply inline-flex;
   @apply items-center;
   @apply px-2;
   @apply py-1;
   @apply transition;
-  @apply hover: text-secondary;
-}
-
-.ts-font {
-  font-size: 0.6rem;
+  @apply hover:text-secondary;
 }
 </style>

@@ -1,13 +1,13 @@
 <template>
-  <div class="flex flex-col flex-1">
+  <div>
     <div
-      class="sticky z-10 flex items-center justify-between flex-shrink-0 pl-4 overflow-x-auto border-b bg-primary border-dividerLight top-lowerSecondaryStickyFold"
+      class="sticky top-lowerSecondaryStickyFold z-10 flex flex-shrink-0 items-center justify-between overflow-x-auto border-b border-dividerLight bg-primary pl-4"
     >
-      <label class="font-semibold truncate text-secondaryLight">
+      <label class="truncate font-semibold text-secondaryLight">
         {{ t("response.body") }}
       </label>
       <div class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-if="response.body"
           v-tippy="{ theme: 'tooltip', allowHTML: true }"
           :title="`${t(
@@ -19,7 +19,7 @@
       </div>
     </div>
     <img
-      class="flex max-w-full border-b border-dividerLight"
+      class="max-w-full"
       :src="imageSource"
       loading="lazy"
       :alt="imageSource"
@@ -67,14 +67,17 @@ const responseType = computed(() =>
 
 const { downloadIcon, downloadResponse } = useDownloadResponse(
   responseType.value,
-  computed(() => props.response.body)
+  computed(() => props.response.body),
+  t("filename.lens", {
+    request_name: props.response.req.name,
+  })
 )
 
 watch(props.response, () => {
   imageSource.value = ""
   const buf = props.response.body
   const bytes = new Uint8Array(buf)
-  const blob = new Blob([bytes.buffer])
+  const blob = new Blob([bytes.buffer], { type: responseType.value })
 
   const reader = new FileReader()
   reader.onload = ({ target }) => {
@@ -88,7 +91,7 @@ onMounted(() => {
   imageSource.value = ""
   const buf = props.response.body
   const bytes = new Uint8Array(buf)
-  const blob = new Blob([bytes.buffer])
+  const blob = new Blob([bytes.buffer], { type: responseType.value })
 
   const reader = new FileReader()
   reader.onload = ({ target }) => {

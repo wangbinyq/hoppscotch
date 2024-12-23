@@ -1,64 +1,90 @@
-import fs from "fs/promises";
-import { pipe } from "fp-ts/function";
-import * as TE from "fp-ts/TaskEither";
-import * as E from "fp-ts/Either";
-import * as J from "fp-ts/Json";
-import * as A from "fp-ts/Array";
-import * as S from "fp-ts/string";
-import isArray from "lodash/isArray";
-import { HoppCLIError, error } from "../../types/errors";
-import { HoppEnvs, HoppEnvPair } from "../../types/request";
-import { checkFile } from "../../utils/checks";
+import { Environment, NonSecretEnvironment } from "@hoppscotch/data";
+import { entityReference } from "verzod";
+import { z } from "zod";
+
+import { TestCmdEnvironmentOptions } from "../../types/commands";
+import { error } from "../../types/errors";
+import {
+  HoppEnvKeyPairObject,
+  HoppEnvPair,
+  HoppEnvs,
+} from "../../types/request";
+import { getResourceContents } from "../../utils/getters";
 
 /**
- * Parses env json file for given path and validates the parsed env json object.
- * @param path Path of env.json file to be parsed.
- * @returns For successful parsing we get HoppEnvs object.
+ * Parses environment data from a given path or ID and returns the data conforming to the latest version of the `Environment` schema.
+ *
+ * @param {TestCmdEnvironmentOptions} options Supplied values for CLI flags.
+ * @param {string} options.env Path of the environment `.json` file to be parsed.
+ * @param {string} [options.token] Personal access token to fetch workspace environments.
+ * @param {string} [options.server] server URL for SH instance.
+ * @returns {Promise<HoppEnvs>} A promise that resolves to the parsed environment object with global and selected environments.
  */
-export const parseEnvsData = (
-  path: unknown
-): TE.TaskEither<HoppCLIError, HoppEnvs> =>
-  !S.isString(path)
-    ? TE.right({ global: [], selected: [] })
-    : pipe(
-        // Checking if the env.json file exists or not.
-        checkFile(path),
+export async function parseEnvsData(options: TestCmdEnvironmentOptions) {
+  const { env: pathOrId, token: accessToken, server: serverUrl } = options;
 
-        // Trying to read given env json file path.
-        TE.chainW((checkedPath) =>
-          TE.tryCatch(
-            () => fs.readFile(checkedPath),
-            (reason) =>
-              error({ code: "UNKNOWN_ERROR", data: E.toError(reason) })
-          )
-        ),
+  const contents = await getResourceContents({
+    pathOrId,
+    accessToken,
+    serverUrl,
+    resourceType: "environment",
+  });
 
-        // Trying to JSON parse the read file data and mapping the entries to HoppEnvPairs.
-        TE.chainEitherKW((data) =>
-          pipe(
-            data.toString(),
-            J.parse,
-            E.map((jsonData) =>
-              jsonData && typeof jsonData === "object" && !isArray(jsonData)
-                ? pipe(
-                    jsonData,
-                    Object.entries,
-                    A.map(
-                      ([key, value]) =>
-                        <HoppEnvPair>{
-                          key,
-                          value: S.isString(value)
-                            ? value
-                            : JSON.stringify(value),
-                        }
-                    )
-                  )
-                : []
-            ),
-            E.map((envPairs) => <HoppEnvs>{ global: [], selected: envPairs }),
-            E.mapLeft((e) =>
-              error({ code: "MALFORMED_ENV_FILE", path, data: E.toError(e) })
-            )
-          )
-        )
-      );
+  const envPairs: Array<HoppEnvPair | Record<string, string>> = [];
+
+  // The legacy key-value pair format that is still supported
+  const HoppEnvKeyPairResult = HoppEnvKeyPairObject.safeParse(contents);
+
+  // Shape of the single environment export object that is exported from the app
+  const HoppEnvExportObjectResult = Environment.safeParse(contents);
+
+  // Shape of the bulk environment export object that is exported from the app
+  const HoppBulkEnvExportObjectResult = z
+    .array(entityReference(Environment))
+    .safeParse(contents);
+
+  // CLI doesnt support bulk environments export
+  // Hence we check for this case and throw an error if it matches the format
+  if (HoppBulkEnvExportObjectResult.success) {
+    throw error({ code: "BULK_ENV_FILE", path: pathOrId, data: error });
+  }
+
+  //  Checks if the environment file is of the correct format
+  // If it doesnt match either of them, we throw an error
+  if (
+    !HoppEnvKeyPairResult.success &&
+    HoppEnvExportObjectResult.type === "err"
+  ) {
+    throw error({ code: "MALFORMED_ENV_FILE", path: pathOrId, data: error });
+  }
+
+  if (HoppEnvKeyPairResult.success) {
+    for (const [key, value] of Object.entries(HoppEnvKeyPairResult.data)) {
+      envPairs.push({ key, value, secret: false });
+    }
+  } else if (HoppEnvExportObjectResult.type === "ok") {
+    // Original environment variables from the supplied export file
+    const originalEnvVariables = (contents as NonSecretEnvironment).variables;
+
+    // Above environment variables conforming to the latest schema
+    // `value` fields if specified will be omitted for secret environment variables
+    const migratedEnvVariables = HoppEnvExportObjectResult.value.variables;
+
+    // The values supplied for secret environment variables have to be considered in the CLI
+    // For each secret environment variable, include the value in case supplied
+    const resolvedEnvVariables = migratedEnvVariables.map((variable, idx) => {
+      if (variable.secret && originalEnvVariables[idx].value) {
+        return {
+          ...variable,
+          value: originalEnvVariables[idx].value,
+        };
+      }
+
+      return variable;
+    });
+
+    envPairs.push(...resolvedEnvVariables);
+  }
+
+  return <HoppEnvs>{ global: [], selected: envPairs };
+}
