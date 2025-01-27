@@ -1,14 +1,14 @@
 <template>
-  <div class="flex" @click="OpenLogoutModal()">
-    <SmartItem
+  <div class="flex" @click="openLogoutModal()">
+    <HoppSmartItem
       ref="logoutItem"
       :icon="IconLogOut"
       :label="`${t('auth.logout')}`"
       :outline="outline"
       :shortcut="shortcut"
-      @click="OpenLogoutModal()"
+      @click="openLogoutModal()"
     />
-    <SmartConfirmModal
+    <HoppSmartConfirmModal
       :show="confirmLogout"
       :title="`${t('confirm.logout')}`"
       @hide-modal="confirmLogout = false"
@@ -22,7 +22,8 @@ import { ref } from "vue"
 import IconLogOut from "~icons/lucide/log-out"
 import { useToast } from "@composables/toast"
 import { useI18n } from "@composables/i18n"
-import { signOutUser } from "~/helpers/fb/auth"
+import { platform } from "~/platform"
+import { defineActionHandler } from "~/helpers/actions"
 
 defineProps({
   outline: {
@@ -47,7 +48,7 @@ const t = useI18n()
 
 const logout = async () => {
   try {
-    await signOutUser()
+    await platform.auth.signOutUser()
     toast.success(`${t("auth.logged_out")}`)
   } catch (e) {
     console.error(e)
@@ -55,8 +56,12 @@ const logout = async () => {
   }
 }
 
-const OpenLogoutModal = () => {
+const openLogoutModal = () => {
   emit("confirm-logout")
   confirmLogout.value = true
 }
+
+defineActionHandler("user.logout", () => {
+  openLogoutModal()
+})
 </script>

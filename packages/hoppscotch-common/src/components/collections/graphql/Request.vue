@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col" :class="[{ 'bg-primaryLight': dragging }]">
     <div
-      class="flex items-stretch group"
+      class="group flex items-stretch"
       draggable="true"
       @dragstart="dragStart"
       @dragover.stop
@@ -9,33 +9,42 @@
       @dragend="dragging = false"
       @contextmenu.prevent="options.tippy.show()"
     >
-      <span
-        class="flex items-center justify-center w-16 px-2 truncate cursor-pointer"
+      <div
+        class="pointer-events-auto flex min-w-0 flex-1 cursor-pointer items-center justify-center"
         @click="selectRequest()"
       >
-        <component
-          :is="isSelected ? IconCheckCircle : IconFile"
-          class="svg-icons"
-          :class="{ 'text-accent': isSelected }"
-        />
-      </span>
-      <span
-        class="flex flex-1 min-w-0 py-2 pr-2 cursor-pointer transition group-hover:text-secondaryDark"
-        @click="selectRequest()"
-      >
-        <span class="truncate" :class="{ 'text-accent': isSelected }">
-          {{ request.name }}
+        <span
+          class="pointer-events-none flex w-8 items-center justify-center truncate px-6"
+        >
+          <component
+            :is="isSelected ? IconCheckCircle : IconFile"
+            class="svg-icons"
+            :class="{ 'text-accent': isSelected }"
+          />
         </span>
-      </span>
+        <span
+          class="pointer-events-none flex min-w-0 flex-1 items-center py-2 pr-2 transition group-hover:text-secondaryDark"
+        >
+          <span class="truncate" :class="{ 'text-accent': isSelected }">
+            {{ request.name }}
+          </span>
+          <span
+            v-if="isActive"
+            v-tippy="{ theme: 'tooltip' }"
+            class="relative mx-3 flex h-1.5 w-1.5 flex-shrink-0"
+            :title="`${t('collection.request_in_use')}`"
+          >
+            <span
+              class="absolute inline-flex h-full w-full flex-shrink-0 animate-ping rounded-full bg-green-500 opacity-75"
+            >
+            </span>
+            <span
+              class="relative inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-green-500"
+            ></span>
+          </span>
+        </span>
+      </div>
       <div class="flex">
-        <ButtonSecondary
-          v-if="!saveRequest"
-          v-tippy="{ theme: 'tooltip' }"
-          :icon="IconRotateCCW"
-          :title="t('action.restore')"
-          class="hidden group-hover:inline-flex"
-          @click="selectRequest()"
-        />
         <span>
           <tippy
             ref="options"
@@ -44,7 +53,7 @@
             theme="popover"
             :on-shown="() => tippyActions.focus()"
           >
-            <ButtonSecondary
+            <HoppButtonSecondary
               v-tippy="{ theme: 'tooltip' }"
               :title="t('action.more')"
               :icon="IconMoreVertical"
@@ -59,7 +68,7 @@
                 @keyup.delete="deleteAction.$el.click()"
                 @keyup.escape="hide()"
               >
-                <SmartItem
+                <HoppSmartItem
                   ref="edit"
                   :icon="IconEdit"
                   :label="`${t('action.edit')}`"
@@ -75,7 +84,7 @@
                     }
                   "
                 />
-                <SmartItem
+                <HoppSmartItem
                   ref="duplicate"
                   :icon="IconCopy"
                   :label="`${t('action.duplicate')}`"
@@ -91,7 +100,7 @@
                     }
                   "
                 />
-                <SmartItem
+                <HoppSmartItem
                   ref="deleteAction"
                   :icon="IconTrash2"
                   :label="`${t('action.delete')}`"
@@ -109,7 +118,7 @@
         </span>
       </div>
     </div>
-    <SmartConfirmModal
+    <HoppSmartConfirmModal
       :show="confirmRemove"
       :title="`${t('confirm.remove_request')}`"
       @hide-modal="confirmRemove = false"
@@ -121,7 +130,6 @@
 <script setup lang="ts">
 import IconCheckCircle from "~icons/lucide/check-circle"
 import IconFile from "~icons/lucide/file"
-import IconRotateCCW from "~icons/lucide/rotate-ccw"
 import IconMoreVertical from "~icons/lucide/more-vertical"
 import IconEdit from "~icons/lucide/edit"
 import IconCopy from "~icons/lucide/copy"
@@ -129,10 +137,10 @@ import IconTrash2 from "~icons/lucide/trash-2"
 import { PropType, computed, ref } from "vue"
 import { useI18n } from "@composables/i18n"
 import { useToast } from "@composables/toast"
-import { HoppGQLRequest, makeGQLRequest } from "@hoppscotch/data"
-import { cloneDeep } from "lodash-es"
+import { HoppGQLRequest } from "@hoppscotch/data"
 import { removeGraphqlRequest } from "~/newstore/collections"
-import { setGQLSession } from "~/newstore/GQLSession"
+import { useService } from "dioc/vue"
+import { GQLTabService } from "~/services/tab/graphql"
 
 // Template refs
 const tippyActions = ref<any | null>(null)
@@ -144,6 +152,8 @@ const deleteAction = ref<any | null>(null)
 const t = useI18n()
 const toast = useToast()
 
+const tabs = useService(GQLTabService)
+
 const props = defineProps({
   // Whether the object is selected (show the tick mark)
   picked: { type: Object, default: null },
@@ -154,8 +164,25 @@ const props = defineProps({
   requestIndex: { type: Number, default: null },
 })
 
+const isActive = computed(() => {
+  const saveCtx = tabs.currentActiveTab.value?.document.saveContext
+
+  if (!saveCtx) return false
+
+  return (
+    saveCtx.originLocation === "user-collection" &&
+    saveCtx.folderPath === props.folderPath &&
+    saveCtx.requestIndex === props.requestIndex
+  )
+})
+
 // TODO: Better types please
-const emit = defineEmits(["select", "edit-request", "duplicate-request"])
+const emit = defineEmits([
+  "select",
+  "edit-request",
+  "duplicate-request",
+  "select-request",
+])
 
 const dragging = ref(false)
 const confirmRemove = ref(false)
@@ -179,19 +206,10 @@ const selectRequest = () => {
   if (props.saveRequest) {
     pick()
   } else {
-    setGQLSession({
-      request: cloneDeep(
-        makeGQLRequest({
-          name: props.request.name,
-          url: props.request.url,
-          query: props.request.query,
-          headers: props.request.headers,
-          variables: props.request.variables,
-          auth: props.request.auth,
-        })
-      ),
-      schema: "",
-      response: "",
+    emit("select-request", {
+      request: props.request,
+      folderPath: props.folderPath,
+      requestIndex: props.requestIndex,
     })
   }
 }
@@ -214,7 +232,19 @@ const removeRequest = () => {
     emit("select", null)
   }
 
-  removeGraphqlRequest(props.folderPath, props.requestIndex)
+  // Detach the request from any of the tabs
+  const possibleTab = tabs.getTabRefWithSaveContext({
+    originLocation: "user-collection",
+    folderPath: props.folderPath,
+    requestIndex: props.requestIndex,
+  })
+
+  if (possibleTab) {
+    possibleTab.value.document.saveContext = undefined
+    possibleTab.value.document.isDirty = true
+  }
+
+  removeGraphqlRequest(props.folderPath, props.requestIndex, props.request.id)
   toast.success(`${t("state.deleted")}`)
 }
 </script>

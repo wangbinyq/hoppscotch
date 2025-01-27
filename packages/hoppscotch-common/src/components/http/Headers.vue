@@ -1,41 +1,46 @@
 <template>
-  <div class="flex flex-col flex-1">
+  <div class="flex flex-1 flex-col">
     <div
-      class="sticky z-10 flex items-center justify-between flex-shrink-0 pl-4 overflow-x-auto border-b bg-primary border-dividerLight top-upperMobileSecondaryStickyFold sm:top-upperSecondaryStickyFold"
+      class="sticky z-10 flex flex-shrink-0 items-center justify-between overflow-x-auto border-b border-dividerLight bg-primary pl-4"
+      :class="[
+        isCollectionProperty
+          ? 'top-propertiesPrimaryStickyFold'
+          : 'top-upperMobileSecondaryStickyFold sm:top-upperSecondaryStickyFold',
+      ]"
     >
-      <label class="font-semibold truncate text-secondaryLight">
+      <label class="truncate font-semibold text-secondaryLight">
         {{ t("request.header_list") }}
       </label>
       <div class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
-          to="https://docs.hoppscotch.io/features/headers"
+          to="https://docs.hoppscotch.io/documentation/features/rest-api-testing"
           blank
           :title="t('app.wiki')"
           :icon="IconHelpCircle"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
           :title="t('action.clear_all')"
           :icon="IconTrash2"
           @click="clearContent()"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-if="bulkMode"
           v-tippy="{ theme: 'tooltip' }"
           :title="t('state.linewrap')"
-          :class="{ '!text-accent': linewrapEnabled }"
+          :class="{ '!text-accent': WRAP_LINES }"
           :icon="IconWrapText"
-          @click.prevent="linewrapEnabled = !linewrapEnabled"
+          @click.prevent="toggleNestedSetting('WRAP_LINES', 'httpHeaders')"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
           :title="t('state.bulk_mode')"
           :icon="IconEdit"
           :class="{ '!text-accent': bulkMode }"
           @click="bulkMode = !bulkMode"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
           :title="t('add.new')"
           :icon="IconPlus"
@@ -44,11 +49,19 @@
         />
       </div>
     </div>
-    <div v-if="bulkMode" ref="bulkEditor" class="flex flex-col flex-1"></div>
+
+    <div v-if="bulkMode" class="h-full relative w-full flex flex-col flex-1">
+      <div
+        ref="bulkEditor"
+        :class="{
+          'absolute inset-0': !isCollectionProperty,
+        }"
+      ></div>
+    </div>
     <div v-else>
       <draggable
         v-model="workingHeaders"
-        :item-key="(header) => `header-${header.id}`"
+        :item-key="(header: WorkingHeader) => `header-${header.id}`"
         animation="250"
         handle=".draggable-handle"
         draggable=".draggable-content"
@@ -57,96 +70,24 @@
         drag-class="cursor-grabbing"
       >
         <template #item="{ element: header, index }">
-          <div
-            class="flex border-b divide-x divide-dividerLight border-dividerLight draggable-content group"
-          >
-            <span>
-              <ButtonSecondary
-                v-tippy="{
-                  theme: 'tooltip',
-                  delay: [500, 20],
-                  content:
-                    index !== workingHeaders?.length - 1
-                      ? t('action.drag_to_reorder')
-                      : null,
-                }"
-                :icon="IconGripVertical"
-                class="cursor-auto text-primary hover:text-primary"
-                :class="{
-                  'draggable-handle group-hover:text-secondaryLight !cursor-grab':
-                    index !== workingHeaders?.length - 1,
-                }"
-                tabindex="-1"
-              />
-            </span>
-            <SmartAutoComplete
-              :placeholder="`${t('count.header', { count: index + 1 })}`"
-              :source="commonHeaders"
-              :spellcheck="false"
-              :value="header.key"
-              autofocus
-              styles=" bg-transparent flex flex-1
-            py-1 px-4 truncate "
-              class="flex-1 !flex"
-              @input="
-                updateHeader(index, {
-                  id: header.id,
-                  key: $event,
-                  value: header.value,
-                  active: header.active,
-                })
-              "
-            />
-            <SmartEnvInput
-              v-model="header.value"
-              :placeholder="`${t('count.value', { count: index + 1 })}`"
-              @change="
-                updateHeader(index, {
-                  id: header.id,
-                  key: header.key,
-                  value: $event,
-                  active: header.active,
-                })
-              "
-            />
-            <span>
-              <ButtonSecondary
-                v-tippy="{ theme: 'tooltip' }"
-                :title="
-                  header.hasOwnProperty('active')
-                    ? header.active
-                      ? t('action.turn_off')
-                      : t('action.turn_on')
-                    : t('action.turn_off')
-                "
-                :icon="
-                  header.hasOwnProperty('active')
-                    ? header.active
-                      ? IconCheckCircle
-                      : IconCircle
-                    : IconCheckCircle
-                "
-                color="green"
-                @click="
-                  updateHeader(index, {
-                    id: header.id,
-                    key: header.key,
-                    value: header.value,
-                    active: !header.active,
-                  })
-                "
-              />
-            </span>
-            <span>
-              <ButtonSecondary
-                v-tippy="{ theme: 'tooltip' }"
-                :title="t('action.remove')"
-                :icon="IconTrash"
-                color="red"
-                @click="deleteHeader(index)"
-              />
-            </span>
-          </div>
+          <HttpKeyValue
+            v-model:name="header.key"
+            v-model:value="header.value"
+            v-model:description="header.description"
+            :total="workingHeaders.length"
+            :index="index"
+            :entity-id="header.id"
+            :entity-active="header.active"
+            :envs="envs"
+            :is-active="header.hasOwnProperty('active')"
+            :inspection-key-result="getInspectorResult(headerKeyResults, index)"
+            :inspection-value-result="
+              getInspectorResult(headerValueResults, index)
+            "
+            :key-auto-complete-source="commonHeaders"
+            @update-entity="updateHeader($event.index, $event.payload)"
+            @delete-entity="deleteHeader($event)"
+          />
         </template>
       </draggable>
 
@@ -162,121 +103,203 @@
       >
         <template #item="{ element: header, index }">
           <div
-            class="flex border-b divide-x divide-dividerLight border-dividerLight draggable-content group"
+            class="draggable-content group flex divide-x divide-dividerLight border-b border-dividerLight"
           >
             <span>
-              <ButtonSecondary
+              <HoppButtonSecondary
                 :icon="IconLock"
-                class="opacity-25 cursor-auto text-secondaryLight bg-divider"
+                class="cursor-auto bg-divider text-secondaryLight opacity-25"
                 tabindex="-1"
               />
             </span>
+
             <SmartEnvInput
               v-model="header.header.key"
               :placeholder="`${t('count.value', { count: index + 1 })}`"
               readonly
             />
+
             <SmartEnvInput
               :model-value="mask(header)"
               :placeholder="`${t('count.value', { count: index + 1 })}`"
               readonly
             />
+
+            <input
+              :value="header.header.description"
+              :placeholder="t('count.description')"
+              type="text"
+              readonly
+              class="flex flex-1 px-4 bg-transparent text-secondaryLight"
+            />
+
             <span>
-              <ButtonSecondary
+              <HoppButtonSecondary
                 v-if="header.source === 'auth'"
+                v-tippy="{ theme: 'tooltip' }"
+                :title="t(masking ? 'state.show' : 'state.hide')"
                 :icon="masking ? IconEye : IconEyeOff"
                 @click="toggleMask()"
               />
-              <ButtonSecondary
-                v-else
-                :icon="IconArrowUpRight"
-                class="cursor-auto text-primary hover:text-primary"
-              />
+              <div v-else class="aspect-square w-8"></div>
             </span>
             <span>
-              <ButtonSecondary
+              <HoppButtonSecondary
+                v-tippy="{ theme: 'tooltip' }"
                 :icon="IconArrowUpRight"
+                :title="changeTabTooltip(header.source)"
                 @click="changeTab(header.source)"
               />
             </span>
           </div>
         </template>
       </draggable>
-      <div
-        v-if="workingHeaders.length === 0"
-        class="flex flex-col items-center justify-center p-4 text-secondaryLight"
+
+      <draggable
+        v-model="inheritedProperties"
+        item-key="id"
+        animation="250"
+        handle=".draggable-handle"
+        draggable=".draggable-content"
+        ghost-class="cursor-move"
+        chosen-class="bg-primaryLight"
+        drag-class="cursor-grabbing"
       >
-        <img
-          :src="`/images/states/${colorMode.value}/add_category.svg`"
-          loading="lazy"
-          class="inline-flex flex-col object-contain object-center w-16 h-16 my-4"
-          :alt="`${t('empty.headers')}`"
-        />
-        <span class="pb-4 text-center">{{ t("empty.headers") }}</span>
-        <ButtonSecondary
-          filled
-          :label="`${t('add.new')}`"
-          :icon="IconPlus"
-          class="mb-4"
-          @click="addHeader"
-        />
-      </div>
+        <template #item="{ element: header, index }">
+          <div
+            class="draggable-content group flex divide-x divide-dividerLight border-b border-dividerLight"
+          >
+            <span>
+              <HoppButtonSecondary
+                :icon="IconLock"
+                class="cursor-auto bg-divider text-secondaryLight opacity-25"
+                tabindex="-1"
+              />
+            </span>
+
+            <SmartEnvInput
+              v-model="header.header.key"
+              :placeholder="`${t('count.value', { count: index + 1 })}`"
+              readonly
+            />
+
+            <SmartEnvInput
+              :model-value="
+                header.source === 'auth' ? mask(header) : header.header.value
+              "
+              :placeholder="`${t('count.value', { count: index + 1 })}`"
+              readonly
+            />
+
+            <input
+              :value="header.header.description"
+              :placeholder="t('count.description')"
+              type="text"
+              readonly
+              class="flex flex-1 px-4 bg-transparent text-secondaryLight"
+            />
+
+            <HoppButtonSecondary
+              v-if="header.source === 'auth'"
+              v-tippy="{ theme: 'tooltip' }"
+              :title="t(masking ? 'state.show' : 'state.hide')"
+              :icon="masking && header.source === 'auth' ? IconEye : IconEyeOff"
+              @click="toggleMask()"
+            />
+            <span v-else class="aspect-square w-[2.05rem]"></span>
+            <span>
+              <HoppButtonSecondary
+                v-tippy="{ theme: 'tooltip' }"
+                :icon="IconInfo"
+                :title="`This header is inherited from Parent Collection ${
+                  header.inheritedFrom ?? ''
+                }`"
+              />
+            </span>
+          </div>
+        </template>
+      </draggable>
+
+      <HoppSmartPlaceholder
+        v-if="workingHeaders.length === 0"
+        :src="`/images/states/${colorMode.value}/add_category.svg`"
+        :alt="`${t('empty.headers')}`"
+        :text="t('empty.headers')"
+      >
+        <template #body>
+          <HoppButtonSecondary
+            filled
+            :label="`${t('add.new')}`"
+            :icon="IconPlus"
+            @click="addHeader"
+          />
+        </template>
+      </HoppSmartPlaceholder>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import IconHelpCircle from "~icons/lucide/help-circle"
-import IconTrash2 from "~icons/lucide/trash-2"
-import IconEdit from "~icons/lucide/edit"
-import IconPlus from "~icons/lucide/plus"
-import IconGripVertical from "~icons/lucide/grip-vertical"
-import IconCheckCircle from "~icons/lucide/check-circle"
-import IconCircle from "~icons/lucide/circle"
-import IconTrash from "~icons/lucide/trash"
-import IconLock from "~icons/lucide/lock"
-import IconEye from "~icons/lucide/eye"
-import IconEyeOff from "~icons/lucide/eye-off"
-import IconArrowUpRight from "~icons/lucide/arrow-up-right"
-import IconWrapText from "~icons/lucide/wrap-text"
+import { useCodemirror } from "@composables/codemirror"
+import { useI18n } from "@composables/i18n"
+import { useReadonlyStream } from "@composables/stream"
 import { useColorMode } from "@composables/theming"
-import { computed, reactive, Ref, ref, watch } from "vue"
-import { isEqual, cloneDeep } from "lodash-es"
+import { useToast } from "@composables/toast"
 import {
+  HoppRESTAuth,
   HoppRESTHeader,
+  HoppRESTRequest,
   parseRawKeyValueEntriesE,
   rawKeyValueEntriesToString,
   RawKeyValueEntry,
 } from "@hoppscotch/data"
-import { flow, pipe } from "fp-ts/function"
-import * as RA from "fp-ts/ReadonlyArray"
-import * as E from "fp-ts/Either"
-import * as O from "fp-ts/Option"
 import * as A from "fp-ts/Array"
-import draggable from "vuedraggable"
-import { RequestOptionTabs } from "./RequestOptions.vue"
-import { useCodemirror } from "@composables/codemirror"
-import {
-  getRESTRequest,
-  restHeaders$,
-  restRequest$,
-  setRESTHeaders,
-} from "~/newstore/RESTSession"
-import { commonHeaders } from "~/helpers/headers"
-import { useI18n } from "@composables/i18n"
-import { useReadonlyStream, useStream } from "@composables/stream"
-import { useToast } from "@composables/toast"
+import * as E from "fp-ts/Either"
+import { flow, pipe } from "fp-ts/function"
+import * as O from "fp-ts/Option"
+import * as RA from "fp-ts/ReadonlyArray"
+import { cloneDeep, isEqual } from "lodash-es"
+import { reactive, Ref, ref, toRef, watch } from "vue"
+import draggable from "vuedraggable-es"
+
+import { computedAsync, useVModel } from "@vueuse/core"
+import { useService } from "dioc/vue"
+import { useNestedSetting } from "~/composables/settings"
 import linter from "~/helpers/editor/linting/rawKeyValue"
 import { throwError } from "~/helpers/functional/error"
 import { objRemoveKey } from "~/helpers/functional/object"
+import { commonHeaders } from "~/helpers/headers"
+import { HoppInheritedProperty } from "~/helpers/types/HoppInheritedProperties"
 import {
   ComputedHeader,
+  getComputedAuthHeaders,
   getComputedHeaders,
 } from "~/helpers/utils/EffectiveURL"
-import { aggregateEnvs$, getAggregateEnvs } from "~/newstore/environments"
+import {
+  AggregateEnvironment,
+  aggregateEnvs$,
+  getAggregateEnvs,
+} from "~/newstore/environments"
+import { toggleNestedSetting } from "~/newstore/settings"
+import { InspectionService, InspectorResult } from "~/services/inspection"
+import { RESTTabService } from "~/services/tab/rest"
+import IconArrowUpRight from "~icons/lucide/arrow-up-right"
+import IconEdit from "~icons/lucide/edit"
+import IconEye from "~icons/lucide/eye"
+import IconEyeOff from "~icons/lucide/eye-off"
+import IconHelpCircle from "~icons/lucide/help-circle"
+import IconInfo from "~icons/lucide/info"
+import IconLock from "~icons/lucide/lock"
+import IconPlus from "~icons/lucide/plus"
+import IconTrash2 from "~icons/lucide/trash-2"
+import IconWrapText from "~icons/lucide/wrap-text"
+import { RESTOptionTabs } from "./RequestOptions.vue"
 
 const t = useI18n()
 const toast = useToast()
+
+const tabs = useService(RESTTabService)
+
 const colorMode = useColorMode()
 
 const idTicker = ref(0)
@@ -284,13 +307,29 @@ const idTicker = ref(0)
 const bulkMode = ref(false)
 const bulkHeaders = ref("")
 const bulkEditor = ref<any | null>(null)
-const linewrapEnabled = ref(true)
+const WRAP_LINES = useNestedSetting("WRAP_LINES", "httpHeaders")
 
 const deletionToast = ref<{ goAway: (delay: number) => void } | null>(null)
 
-const emit = defineEmits<{
-  (e: "change-tab", value: RequestOptionTabs): void
+// v-model integration with props and emit
+const props = defineProps<{
+  modelValue:
+    | HoppRESTRequest
+    | {
+        headers: HoppRESTHeader[]
+        auth: HoppRESTAuth
+      }
+  isCollectionProperty?: boolean
+  inheritedProperties?: HoppInheritedProperty
+  envs?: AggregateEnvironment[]
 }>()
+
+const emit = defineEmits<{
+  (e: "change-tab", value: RESTOptionTabs): void
+  (e: "update:modelValue", value: HoppRESTRequest): void
+}>()
+
+const request = useVModel(props, "modelValue", emit)
 
 useCodemirror(
   bulkEditor,
@@ -299,26 +338,25 @@ useCodemirror(
     extendedEditorConfig: {
       mode: "text/x-yaml",
       placeholder: `${t("state.bulk_mode_placeholder")}`,
-      lineWrapping: linewrapEnabled,
+      lineWrapping: WRAP_LINES,
     },
     linter,
     completer: null,
     environmentHighlights: true,
+    predefinedVariablesHighlights: true,
   })
 )
 
-// The functional headers list (the headers actually in the system)
-const headers = useStream(restHeaders$, [], setRESTHeaders) as Ref<
-  HoppRESTHeader[]
->
+type WorkingHeader = HoppRESTHeader & { id: number }
 
 // The UI representation of the headers list (has the empty end headers)
-const workingHeaders = ref<Array<HoppRESTHeader & { id: number }>>([
+const workingHeaders = ref<Array<WorkingHeader>>([
   {
     id: idTicker.value++,
     key: "",
     value: "",
     active: true,
+    description: "",
   },
 ])
 
@@ -333,13 +371,14 @@ watch(workingHeaders, (headersList) => {
       key: "",
       value: "",
       active: true,
+      description: "",
     })
   }
 })
 
 // Sync logic between headers and working/bulk headers
 watch(
-  headers,
+  () => request.value.headers,
   (newHeadersList) => {
     // Sync should overwrite working headers
     const filteredWorkingHeaders = pipe(
@@ -370,8 +409,18 @@ watch(
       )
     }
 
-    if (!isEqual(newHeadersList, filteredBulkHeaders)) {
-      bulkHeaders.value = rawKeyValueEntriesToString(newHeadersList)
+    const newHeadersListKeyValuePairs = newHeadersList.map(
+      ({ key, value, active }) => ({
+        key,
+        value,
+        active,
+      })
+    )
+
+    if (!isEqual(newHeadersListKeyValuePairs, filteredBulkHeaders)) {
+      bulkHeaders.value = rawKeyValueEntriesToString(
+        newHeadersListKeyValuePairs
+      )
     }
   },
   { immediate: true }
@@ -388,8 +437,8 @@ watch(workingHeaders, (newWorkingHeaders) => {
     )
   )
 
-  if (!isEqual(headers.value, fixedHeaders)) {
-    headers.value = cloneDeep(fixedHeaders)
+  if (!isEqual(request.value.headers, fixedHeaders)) {
+    request.value.headers = cloneDeep(fixedHeaders)
   }
 })
 
@@ -405,8 +454,20 @@ watch(bulkHeaders, (newBulkHeaders) => {
     E.getOrElse(() => [] as RawKeyValueEntry[])
   )
 
-  if (!isEqual(headers.value, filteredBulkHeaders)) {
-    headers.value = filteredBulkHeaders
+  const headers = toRef(request.value, "headers")
+
+  const paramKeyValuePairs = headers.value.map(({ key, value, active }) => ({
+    key,
+    value,
+    active,
+  }))
+
+  if (!isEqual(paramKeyValuePairs, filteredBulkHeaders)) {
+    headers.value = filteredBulkHeaders.map((param, idx) => ({
+      ...param,
+      // Adding a new key-value pair in the bulk edit context won't have a corresponding entry under `headers.value`, hence the fallback
+      description: headers.value[idx]?.description ?? "",
+    }))
   }
 })
 
@@ -416,6 +477,7 @@ const addHeader = () => {
     key: "",
     value: "",
     active: true,
+    description: "",
   })
 }
 
@@ -475,23 +537,103 @@ const clearContent = () => {
       key: "",
       value: "",
       active: true,
+      description: "",
     },
   ]
 
   bulkHeaders.value = ""
 }
 
-const restRequest = useReadonlyStream(restRequest$, getRESTRequest())
 const aggregateEnvs = useReadonlyStream(aggregateEnvs$, getAggregateEnvs())
 
-const computedHeaders = computed(() =>
-  getComputedHeaders(restRequest.value, aggregateEnvs.value).map(
-    (header, index) => ({
-      id: `header-${index}`,
-      ...header,
-    })
+const computedHeaders: Ref<
+  {
+    source: "auth" | "body"
+    header: HoppRESTHeader
+    id: string
+  }[]
+> = ref([])
+
+watch([props.modelValue, aggregateEnvs], async () => {
+  computedHeaders.value = (
+    await getComputedHeaders(props.modelValue, aggregateEnvs.value, false)
+  ).map((header, index) => ({
+    id: `header-${index}`,
+    ...header,
+  }))
+})
+
+const inheritedProperties = computedAsync(async () => {
+  if (!props.inheritedProperties?.auth || !props.inheritedProperties.headers)
+    return []
+
+  //filter out headers that are already in the request headers
+
+  const inheritedHeaders = props.inheritedProperties.headers.filter(
+    (header) =>
+      !request.value.headers.some(
+        (requestHeader) => requestHeader.key === header.inheritedHeader?.key
+      )
   )
-)
+
+  const headers = inheritedHeaders
+    .filter(
+      (header) =>
+        header.inheritedHeader !== null &&
+        header.inheritedHeader !== undefined &&
+        header.inheritedHeader.active
+    )
+    .map((header, index) => {
+      const { key, value, active, description } = header.inheritedHeader
+
+      return {
+        inheritedFrom: props.inheritedProperties?.headers[index].parentName,
+        source: "headers",
+        id: `header-${index}`,
+        header: {
+          key,
+          value,
+          active,
+          description,
+        },
+      }
+    })
+
+  let auth = [] as {
+    inheritedFrom: string
+    source: "auth"
+    id: string
+    header: {
+      key: string
+      value: string
+      active: boolean
+    }
+  }[]
+
+  const [computedAuthHeader] = await getComputedAuthHeaders(
+    aggregateEnvs.value,
+    request.value,
+    props.inheritedProperties.auth.inheritedAuth,
+    false
+  )
+
+  if (
+    computedAuthHeader &&
+    request.value.auth.authType === "inherit" &&
+    request.value.auth.authActive
+  ) {
+    auth = [
+      {
+        inheritedFrom: props.inheritedProperties?.auth.parentName,
+        source: "auth",
+        id: `header-auth`,
+        header: computedAuthHeader,
+      },
+    ]
+  }
+
+  return [...headers, ...auth]
+})
 
 const masking = ref(true)
 
@@ -505,8 +647,49 @@ const mask = (header: ComputedHeader) => {
   return header.header.value
 }
 
+const changeTabTooltip = (tab: ComputedHeader["source"]) => {
+  switch (tab) {
+    case "auth":
+      return t("request.go_to_authorization_tab")
+    case "body":
+      return t("request.go_to_body_tab")
+  }
+}
+
 const changeTab = (tab: ComputedHeader["source"]) => {
   if (tab === "auth") emit("change-tab", "authorization")
   else emit("change-tab", "bodyParams")
 }
+
+const inspectionService = useService(InspectionService)
+
+const headerKeyResults = inspectionService.getResultViewFor(
+  tabs.currentTabID.value,
+  (result) =>
+    result.locations.type === "header" && result.locations.position === "key"
+)
+
+const headerValueResults = inspectionService.getResultViewFor(
+  tabs.currentTabID.value,
+  (result) =>
+    result.locations.type === "header" && result.locations.position === "value"
+)
+
+const getInspectorResult = (results: InspectorResult[], index: number) => {
+  return results.filter((result) => {
+    if (
+      result.locations.type === "url" ||
+      result.locations.type === "response" ||
+      result.locations.type === "body-content-type-header"
+    )
+      return
+    return result.locations.index === index
+  })
+}
 </script>
+
+<style lang="scss" scoped>
+:deep(.cm-panels) {
+  @apply top-upperTertiaryStickyFold #{!important};
+}
+</style>

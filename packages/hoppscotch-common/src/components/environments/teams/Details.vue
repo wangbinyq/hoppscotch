@@ -1,5 +1,5 @@
 <template>
-  <SmartModal
+  <HoppSmartModal
     v-if="show"
     dialog
     :title="t(`environment.${action}`)"
@@ -7,122 +7,127 @@
   >
     <template #body>
       <div class="flex flex-col px-2">
-        <div class="relative flex">
-          <input
-            id="selectLabelEnvEdit"
-            v-model="name"
-            v-focus
-            class="input floating-input"
-            :class="isViewer && 'opacity-25'"
-            placeholder=""
-            type="text"
-            autocomplete="off"
-            :disabled="isViewer"
-            @keyup.enter="saveEnvironment"
-          />
-          <label for="selectLabelEnvEdit">
-            {{ t("action.label") }}
-          </label>
-        </div>
-        <div class="flex items-center justify-between flex-1">
-          <label for="variableList" class="p-4">
-            {{ t("environment.variable_list") }}
-          </label>
-          <div v-if="!isViewer" class="flex">
-            <ButtonSecondary
-              v-tippy="{ theme: 'tooltip' }"
-              :title="t('action.clear_all')"
-              :icon="clearIcon"
-              @click="clearContent()"
-            />
-            <ButtonSecondary
-              v-tippy="{ theme: 'tooltip' }"
-              :icon="IconPlus"
-              :title="t('add.new')"
-              @click="addEnvironmentVariable"
-            />
-          </div>
-        </div>
-        <div
-          v-if="evnExpandError"
-          class="w-full px-4 py-2 mb-2 overflow-auto font-mono text-red-400 whitespace-normal rounded bg-primaryLight"
-        >
-          {{ t("environment.nested_overflow") }}
-        </div>
-        <div class="border rounded divide-y divide-dividerLight border-divider">
+        <HoppSmartInput
+          v-model="editingName"
+          placeholder=" "
+          :input-styles="['floating-input', isViewer && 'opacity-25']"
+          :label="t('action.label')"
+          :disabled="isViewer"
+          @submit="saveEnvironment"
+        />
+
+        <div class="my-4 flex flex-col border border-divider rounded">
           <div
-            v-for="({ id, env }, index) in vars"
-            :key="`variable-${id}-${index}`"
-            class="flex divide-x divide-dividerLight"
+            v-if="evnExpandError"
+            class="mb-2 w-full overflow-auto whitespace-normal rounded bg-primaryLight px-4 py-2 font-mono text-red-400"
           >
-            <input
-              v-model="env.key"
-              v-focus
-              class="flex flex-1 px-4 py-2 bg-transparent"
-              :class="isViewer && 'opacity-25'"
-              :placeholder="`${t('count.variable', { count: index + 1 })}`"
-              :name="'param' + index"
-              :disabled="isViewer"
-            />
-            <SmartEnvInput
-              v-model="env.value"
-              :select-text-on-mount="env.key === editingVariableName"
-              :placeholder="`${t('count.value', { count: index + 1 })}`"
-              :envs="liveEnvs"
-              :name="'value' + index"
-              :readonly="isViewer"
-            />
-            <div v-if="!isViewer" class="flex">
-              <ButtonSecondary
-                id="variable"
-                v-tippy="{ theme: 'tooltip' }"
-                :title="t('action.remove')"
-                :icon="IconTrash"
-                color="red"
-                @click="removeEnvironmentVariable(index)"
-              />
-            </div>
+            {{ t("environment.nested_overflow") }}
           </div>
-          <div
-            v-if="vars.length === 0"
-            class="flex flex-col items-center justify-center p-4 text-secondaryLight"
-          >
-            <img
-              :src="`/images/states/${colorMode.value}/blockchain.svg`"
-              loading="lazy"
-              class="inline-flex flex-col object-contain object-center w-16 h-16 my-4"
-              :alt="`${t('empty.environments')}`"
-            />
-            <span class="pb-4 text-center">
-              {{ t("empty.environments") }}
-            </span>
-            <ButtonSecondary
-              v-if="isViewer"
-              disabled
-              :label="`${t('add.new')}`"
-              filled
-              class="mb-4"
-            />
-            <ButtonSecondary
-              v-else
-              :label="`${t('add.new')}`"
-              filled
-              class="mb-4"
-              @click="addEnvironmentVariable"
-            />
-          </div>
+          <HoppSmartTabs v-model="selectedEnvOption" render-inactive-tabs>
+            <template #actions>
+              <div class="flex flex-1 items-center justify-between">
+                <HoppButtonSecondary
+                  v-tippy="{ theme: 'tooltip' }"
+                  to="https://docs.hoppscotch.io/documentation/features/environments"
+                  blank
+                  :title="t('app.wiki')"
+                  :icon="IconHelpCircle"
+                />
+                <HoppButtonSecondary
+                  v-if="!isViewer"
+                  v-tippy="{ theme: 'tooltip' }"
+                  :title="t('action.clear_all')"
+                  :icon="clearIcon"
+                  @click="clearContent()"
+                />
+                <HoppButtonSecondary
+                  v-if="!isViewer"
+                  v-tippy="{ theme: 'tooltip' }"
+                  :icon="IconPlus"
+                  :title="t('add.new')"
+                  @click="addEnvironmentVariable"
+                />
+              </div>
+            </template>
+
+            <HoppSmartTab
+              v-for="tab in tabsData"
+              :id="tab.id"
+              :key="tab.id"
+              :label="tab.label"
+            >
+              <div class="divide-y divide-dividerLight">
+                <HoppSmartPlaceholder
+                  v-if="tab.variables.length === 0"
+                  :src="`/images/states/${colorMode.value}/blockchain.svg`"
+                  :alt="tab.emptyStateLabel"
+                  :text="tab.emptyStateLabel"
+                >
+                  <template #body>
+                    <HoppButtonSecondary
+                      v-if="!isViewer"
+                      :label="`${t('add.new')}`"
+                      filled
+                      :icon="IconPlus"
+                      @click="addEnvironmentVariable"
+                    />
+                  </template>
+                </HoppSmartPlaceholder>
+
+                <template v-else>
+                  <div
+                    v-for="({ id, env }, index) in tab.variables"
+                    :key="`variable-${id}-${index}`"
+                    class="flex divide-x divide-dividerLight"
+                  >
+                    <input
+                      v-model="env.key"
+                      v-focus
+                      class="flex flex-1 bg-transparent px-4 py-2"
+                      :placeholder="`${t('count.variable', {
+                        count: index + 1,
+                      })}`"
+                      :name="'param' + index"
+                      :disabled="isViewer"
+                    />
+                    <SmartEnvInput
+                      v-model="env.value"
+                      :select-text-on-mount="
+                        env.key ? env.key === editingVariableName : false
+                      "
+                      :placeholder="`${t('count.value', { count: index + 1 })}`"
+                      :envs="liveEnvs"
+                      :name="'value' + index"
+                      :secret="tab.isSecret"
+                      :readonly="isViewer && !tab.isSecret"
+                    />
+                    <div v-if="!isViewer" class="flex">
+                      <HoppButtonSecondary
+                        id="variable"
+                        v-tippy="{ theme: 'tooltip' }"
+                        :title="t('action.remove')"
+                        :icon="IconTrash"
+                        color="red"
+                        @click="removeEnvironmentVariable(id)"
+                      />
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </HoppSmartTab>
+          </HoppSmartTabs>
         </div>
       </div>
     </template>
-    <template v-if="!isViewer" #footer>
+    <template #footer>
       <span class="flex space-x-2">
-        <ButtonPrimary
+        <HoppButtonPrimary
           :label="`${t('action.save')}`"
           :loading="isLoading"
           outline
           @click="saveEnvironment"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           :label="`${t('action.cancel')}`"
           outline
           filled
@@ -130,17 +135,17 @@
         />
       </span>
     </template>
-  </SmartModal>
+  </HoppSmartModal>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { ComputedRef, computed, ref, watch } from "vue"
 import * as E from "fp-ts/Either"
 import * as A from "fp-ts/Array"
 import * as O from "fp-ts/Option"
 import * as TE from "fp-ts/TaskEither"
 import { flow, pipe } from "fp-ts/function"
-import { parseTemplateStringE } from "@hoppscotch/data"
+import { Environment, parseTemplateStringE } from "@hoppscotch/data"
 import { refAutoReset } from "@vueuse/core"
 import { clone } from "lodash-es"
 import { useToast } from "@composables/toast"
@@ -156,12 +161,18 @@ import IconTrash from "~icons/lucide/trash"
 import IconTrash2 from "~icons/lucide/trash-2"
 import IconDone from "~icons/lucide/check"
 import IconPlus from "~icons/lucide/plus"
+import IconHelpCircle from "~icons/lucide/help-circle"
+import { platform } from "~/platform"
+import { useService } from "dioc/vue"
+import { SecretEnvironmentService } from "~/services/secret-environment.service"
+import { getEnvActionErrorMessage } from "~/helpers/error-messages"
 
 type EnvironmentVariable = {
   id: number
   env: {
     key: string
     value: string
+    secret: boolean
   }
 }
 
@@ -173,16 +184,22 @@ const props = withDefaults(
   defineProps<{
     show: boolean
     action: "edit" | "new"
-    editingEnvironment: TeamEnvironment | null
+    editingEnvironment?: TeamEnvironment | null
     editingTeamId: string | undefined
-    editingVariableName: string | null
-    isViewer: boolean
+    editingVariableName?: string | null
+    isViewer?: boolean
+    isSecretOptionSelected?: boolean
+    envVars?: () => Environment["variables"]
   }>(),
   {
     show: false,
     action: "edit",
     editingEnvironment: null,
     editingTeamId: "",
+    editingVariableName: null,
+    isViewer: false,
+    isSecretOptionSelected: false,
+    envVars: () => [],
   }
 )
 
@@ -192,10 +209,58 @@ const emit = defineEmits<{
 
 const idTicker = ref(0)
 
-const name = ref<string | null>(null)
+const tabsData: ComputedRef<
+  {
+    id: string
+    label: string
+    emptyStateLabel: string
+    isSecret: boolean
+    variables: EnvironmentVariable[]
+  }[]
+> = computed(() => {
+  return [
+    {
+      id: "variables",
+      label: t("environment.variables"),
+      emptyStateLabel: t("empty.environments"),
+      isSecret: false,
+      variables: nonSecretVars.value,
+    },
+    {
+      id: "secret",
+      label: t("environment.secrets"),
+      emptyStateLabel: t("empty.secret_environments"),
+      isSecret: true,
+      variables: secretVars.value,
+    },
+  ]
+})
+
+const editingName = ref<string | null>(null)
+const editingID = ref<string | null>(null)
 const vars = ref<EnvironmentVariable[]>([
-  { id: idTicker.value++, env: { key: "", value: "" } },
+  { id: idTicker.value++, env: { key: "", value: "", secret: false } },
 ])
+
+const secretEnvironmentService = useService(SecretEnvironmentService)
+
+const secretVars = computed(() =>
+  pipe(
+    vars.value,
+    A.filter((e) => e.env.secret)
+  )
+)
+
+const nonSecretVars = computed(() =>
+  pipe(
+    vars.value,
+    A.filter((e) => !e.env.secret)
+  )
+)
+
+type SelectedEnv = "variables" | "secret"
+
+const selectedEnvOption = ref<SelectedEnv>("variables")
 
 const clearIcon = refAutoReset<typeof IconTrash2 | typeof IconDone>(
   IconTrash2,
@@ -217,25 +282,45 @@ const evnExpandError = computed(() => {
 const liveEnvs = computed(() => {
   if (evnExpandError.value) {
     return []
-  } else {
-    return [...vars.value.map((x) => ({ ...x.env, source: name.value! }))]
   }
+  return [...vars.value.map((x) => ({ ...x.env, source: editingName.value! }))]
 })
 
 watch(
   () => props.show,
   (show) => {
     if (show) {
-      if (props.editingEnvironment === null) {
-        name.value = null
-        vars.value = []
-      } else {
-        name.value = props.editingEnvironment.environment.name ?? null
+      editingName.value = props.editingEnvironment?.environment.name ?? null
+      selectedEnvOption.value = props.isSecretOptionSelected
+        ? "secret"
+        : "variables"
+      if (props.action === "new") {
         vars.value = pipe(
-          props.editingEnvironment.environment.variables ?? [],
-          A.map((e: { key: string; value: string }) => ({
+          props.envVars() ?? [],
+          A.map((e) => ({
             id: idTicker.value++,
             env: clone(e),
+          }))
+        )
+      } else if (props.editingEnvironment !== null) {
+        editingID.value = props.editingEnvironment.id
+        vars.value = pipe(
+          props.editingEnvironment.environment.variables ?? [],
+          A.mapWithIndex((index, e) => ({
+            id: idTicker.value++,
+            env: {
+              key: e.key,
+              value: e.secret
+                ? (secretEnvironmentService.getSecretEnvironmentVariable(
+                    editingID.value ?? "",
+                    index
+                  )?.value ??
+                  // @ts-expect-error `value` field can exist for secret environment variables as inferred while importing
+                  e.value ??
+                  "")
+                : e.value,
+              secret: e.secret,
+            },
           }))
         )
       }
@@ -255,12 +340,16 @@ const addEnvironmentVariable = () => {
     env: {
       key: "",
       value: "",
+      secret: selectedEnvOption.value === "secret",
     },
   })
 }
 
-const removeEnvironmentVariable = (index: number) => {
-  vars.value.splice(index, 1)
+const removeEnvironmentVariable = (id: number) => {
+  const index = vars.value.findIndex((e) => e.id === id)
+  if (index !== -1) {
+    vars.value.splice(index, 1)
+  }
 }
 
 const isLoading = ref(false)
@@ -268,12 +357,14 @@ const isLoading = ref(false)
 const saveEnvironment = async () => {
   isLoading.value = true
 
-  if (!name.value) {
+  if (!editingName.value) {
+    isLoading.value = false
     toast.error(`${t("environment.invalid_name")}`)
+
     return
   }
 
-  const filterdVariables = pipe(
+  const filteredVariables = pipe(
     vars.value,
     A.filterMap(
       flow(
@@ -283,67 +374,108 @@ const saveEnvironment = async () => {
     )
   )
 
+  const secretVariables = pipe(
+    filteredVariables,
+    A.filterMapWithIndex((i, e) =>
+      e.secret ? O.some({ key: e.key, value: e.value, varIndex: i }) : O.none
+    )
+  )
+
+  const variables = pipe(
+    filteredVariables,
+    A.map((e) => (e.secret ? { key: e.key, secret: e.secret } : e))
+  )
+
+  const environmentUpdated: Environment = {
+    v: 1,
+    id: editingID.value ?? "",
+    name: editingName.value,
+    variables,
+  }
+
   if (props.action === "new") {
-    await pipe(
-      createTeamEnvironment(
-        JSON.stringify(filterdVariables),
-        props.editingTeamId,
-        name.value
-      ),
-      TE.match(
-        (err: GQLError<string>) => {
-          console.error(err)
-          toast.error(`${getErrorMessage(err)}`)
-        },
-        () => {
-          hideModal()
-          toast.success(`${t("environment.created")}`)
-        }
-      )
-    )()
+    platform.analytics?.logEvent({
+      type: "HOPP_CREATE_ENVIRONMENT",
+      workspaceType: "team",
+    })
+
+    if (!props.isViewer) {
+      await pipe(
+        createTeamEnvironment(
+          JSON.stringify(environmentUpdated.variables),
+          props.editingTeamId,
+          environmentUpdated.name
+        ),
+        TE.match(
+          (err: GQLError<string>) => {
+            console.error(err)
+            toast.error(t(getEnvActionErrorMessage(err)))
+            isLoading.value = false
+          },
+          (res) => {
+            const envID = res.createTeamEnvironment.id
+            if (envID) {
+              secretEnvironmentService.addSecretEnvironment(
+                envID,
+                secretVariables
+              )
+            }
+            hideModal()
+            toast.success(`${t("environment.created")}`)
+            isLoading.value = false
+          }
+        )
+      )()
+    }
   } else {
     if (!props.editingEnvironment) {
       console.error("No Environment Found")
       return
     }
 
-    await pipe(
-      updateTeamEnvironment(
-        JSON.stringify(filterdVariables),
-        props.editingEnvironment.id,
-        name.value
-      ),
-      TE.match(
-        (err: GQLError<string>) => {
-          console.error(err)
-          toast.error(`${getErrorMessage(err)}`)
-        },
-        () => {
-          hideModal()
-          toast.success(`${t("environment.updated")}`)
-        }
+    if (editingID.value) {
+      secretEnvironmentService.addSecretEnvironment(
+        editingID.value,
+        secretVariables
       )
-    )()
+
+      // If the user is a viewer, we don't need to update the environment in BE
+      // just update the secret environment in the local storage
+      if (props.isViewer) {
+        hideModal()
+        toast.success(`${t("environment.updated")}`)
+      }
+    }
+
+    if (!props.isViewer) {
+      await pipe(
+        updateTeamEnvironment(
+          JSON.stringify(environmentUpdated.variables),
+          props.editingEnvironment.id,
+          environmentUpdated.name
+        ),
+        TE.match(
+          (err: GQLError<string>) => {
+            console.error(err)
+            toast.error(t(getEnvActionErrorMessage(err)))
+            isLoading.value = false
+          },
+          () => {
+            hideModal()
+            toast.success(`${t("environment.updated")}`)
+            isLoading.value = false
+          }
+        )
+      )()
+    }
   }
 
   isLoading.value = false
 }
 
 const hideModal = () => {
-  name.value = null
+  editingName.value = null
+  selectedEnvOption.value = "variables"
   emit("hide-modal")
-}
-
-const getErrorMessage = (err: GQLError<string>) => {
-  if (err.type === "network_error") {
-    return t("error.network_error")
-  } else {
-    switch (err.error) {
-      case "team_environment/not_found":
-        return t("team_environment.not_found")
-      default:
-        return t("error.something_went_wrong")
-    }
-  }
 }
 </script>

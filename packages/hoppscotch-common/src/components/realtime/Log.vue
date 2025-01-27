@@ -1,49 +1,49 @@
 <template>
-  <div class="flex flex-col flex-1 overflow-auto whitespace-nowrap">
+  <div class="flex flex-1 flex-col overflow-auto whitespace-nowrap">
     <div
       v-if="log.length !== 0"
-      class="sticky top-0 z-10 flex items-center justify-between flex-shrink-0 pl-4 overflow-x-auto border-b bg-primary border-dividerLight"
+      class="sticky top-0 z-10 flex flex-shrink-0 items-center justify-between overflow-x-auto border-b border-dividerLight bg-primary pl-4"
     >
-      <label for="log" class="font-semibold truncate text-secondaryLight">
+      <label for="log" class="truncate font-semibold text-secondaryLight">
         {{ title }}
       </label>
       <div class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
           :title="t('action.delete')"
           :icon="IconTrash"
           @click="emit('delete')"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           id="bottompage"
           v-tippy="{ theme: 'tooltip' }"
           :title="t('action.scroll_to_top')"
           :icon="IconArrowUp"
           @click="scrollTo('top')"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           id="bottompage"
           v-tippy="{ theme: 'tooltip' }"
           :title="t('action.scroll_to_bottom')"
           :icon="IconArrowDown"
           @click="scrollTo('bottom')"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           id="bottompage"
           v-tippy="{ theme: 'tooltip' }"
           :title="`${t('action.autoscroll')}: ${
             autoScrollEnabled ? t('action.turn_off') : t('action.turn_on')
           }`"
           :icon="IconChevronsDown"
-          :class="toggleAutoscrollColor"
-          @click="toggleAutoscroll()"
+          :color="autoScrollEnabled ? 'green' : 'red'"
+          @click="autoScrollEnabled = !autoScrollEnabled"
         />
       </div>
     </div>
     <div
       v-if="log.length !== 0"
       ref="logs"
-      class="flex flex-col flex-1 overflow-y-auto"
+      class="flex flex-1 flex-col overflow-y-auto"
     >
       <div class="border-b border-dividerLight">
         <div class="flex flex-col divide-y divide-dividerLight">
@@ -60,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, PropType, computed, watch } from "vue"
+import { ref, PropType, watch, Ref } from "vue"
 import IconTrash from "~icons/lucide/trash"
 import IconArrowUp from "~icons/lucide/arrow-up"
 import IconArrowDown from "~icons/lucide/arrow-down"
@@ -73,7 +73,7 @@ export type LogEntryData = {
   ts: number | undefined
   source: "info" | "client" | "server" | "disconnected"
   payload: string
-  event: "connecting" | "connected" | "disconnected" | "error"
+  event?: "connecting" | "connected" | "disconnected" | "error"
 }
 
 const props = defineProps({
@@ -94,7 +94,7 @@ const logs = ref<HTMLElement>()
 
 const autoScrollEnabled = ref(true)
 
-const logListScroll = useScroll(logs)
+const logListScroll = useScroll(logs as Ref<HTMLElement>)
 
 // Disable autoscroll when scrolling to top
 watch(logListScroll.isScrolling, (isScrolling) => {
@@ -122,13 +122,5 @@ watch(
     if (autoScrollEnabled.value) scrollTo("bottom")
   }, 200),
   { flush: "post" }
-)
-
-const toggleAutoscroll = () => {
-  autoScrollEnabled.value = !autoScrollEnabled.value
-}
-
-const toggleAutoscrollColor = computed(() =>
-  autoScrollEnabled.value ? "text-green-500" : "text-red-500"
 )
 </script>

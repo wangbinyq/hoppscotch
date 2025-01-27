@@ -6,14 +6,14 @@
     <div class="my-1 mb-4 text-secondaryLight">
       {{ t("settings.delete_account_description") }}
     </div>
-    <ButtonSecondary
+    <HoppButtonSecondary
       filled
       outline
       :label="t('settings.delete_account')"
       type="submit"
       @click="showDeleteAccountModal = true"
     />
-    <SmartModal
+    <HoppSmartModal
       v-if="showDeleteAccountModal"
       dialog
       :title="t('settings.delete_account')"
@@ -21,19 +21,19 @@
     >
       <template #body>
         <div v-if="loading" class="flex flex-col items-center justify-center">
-          <SmartSpinner class="mb-4" />
+          <HoppSmartSpinner class="mb-4" />
           <span class="text-secondaryLight">{{ t("state.loading") }}</span>
         </div>
         <div
           v-else-if="myTeams.length"
-          class="flex flex-col p-4 space-y-2 border border-red-500 rounded-lg text-secondaryDark bg-error"
+          class="bg-bannerInfo flex flex-col space-y-2 rounded-lg border border-red-500 p-4 text-secondaryDark"
         >
           <h2 class="font-bold text-red-500">
             {{ t("error.danger_zone") }}
           </h2>
           <div>
             {{ t("error.delete_account") }}
-            <ul class="my-4 ml-8 space-y-2 list-disc">
+            <ul class="my-4 ml-8 list-disc space-y-2">
               <li v-for="team in myTeams" :key="team.id">
                 {{ team.name }}
               </li>
@@ -45,7 +45,7 @@
         </div>
         <div v-else>
           <div
-            class="flex flex-col p-4 mb-4 space-y-2 border border-red-500 rounded-lg text-secondaryDark bg-error"
+            class="bg-bannerInfo mb-4 flex flex-col space-y-2 rounded-lg border border-red-500 p-4 text-secondaryDark"
           >
             <h2 class="font-bold text-red-500">
               {{ t("error.danger_zone") }}
@@ -73,7 +73,7 @@
       </template>
       <template #footer>
         <span class="flex space-x-2">
-          <ButtonPrimary
+          <HoppButtonPrimary
             :label="t('settings.delete_account')"
             :loading="deletingUser"
             filled
@@ -83,10 +83,10 @@
               myTeams.length > 0 ||
               userVerificationInput !== 'delete my account'
             "
-            class="!bg-red-500 !hover:bg-red-600 !border-red-500 !hover:border-red-600"
+            class="!hover:bg-red-600 !hover:border-red-600 !border-red-500 !bg-red-500"
             @click="deleteUserAccount"
           />
-          <ButtonSecondary
+          <HoppButtonSecondary
             :label="t('action.cancel')"
             outline
             filled
@@ -94,7 +94,7 @@
           />
         </span>
       </template>
-    </SmartModal>
+    </HoppSmartModal>
   </section>
 </template>
 
@@ -109,7 +109,7 @@ import { useI18n } from "~/composables/i18n"
 import { useToast } from "~/composables/toast"
 import { GetMyTeamsDocument, GetMyTeamsQuery } from "~/helpers/backend/graphql"
 import { deleteUser } from "~/helpers/backend/mutations/Profile"
-import { signOutUser } from "~/helpers/fb/auth"
+import { platform } from "~/platform"
 
 const t = useI18n()
 const toast = useToast()
@@ -131,6 +131,7 @@ const fetchMyTeams = async () => {
   loading.value = true
   const result = await runGQLQuery({
     query: GetMyTeamsDocument,
+    variables: {},
   })
   loading.value = false
 
@@ -162,7 +163,7 @@ const deleteUserAccount = async () => {
         deletingUser.value = false
         showDeleteAccountModal.value = false
         toast.success(t("settings.account_deleted"))
-        signOutUser()
+        platform.auth.signOutUser()
         router.push(`/`)
       }
     )
@@ -172,13 +173,8 @@ const deleteUserAccount = async () => {
 const getErrorMessage = (err: GQLError<string>) => {
   if (err.type === "network_error") {
     return t("error.network_error")
-  } else {
-    switch (err.error) {
-      case "shortcode/not_found":
-        return t("shortcodes.not_found")
-      default:
-        return t("error.something_went_wrong")
-    }
   }
+
+  return t("error.something_went_wrong")
 }
 </script>

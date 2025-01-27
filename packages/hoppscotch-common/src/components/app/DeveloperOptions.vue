@@ -1,16 +1,16 @@
 <template>
-  <SmartModal
+  <HoppSmartModal
     v-if="show"
     dialog
     :title="t('app.developer_option')"
     @close="hideModal"
   >
     <template #body>
-      <p class="px-2 mb-4 text-secondaryLight">
+      <p class="mb-4 px-2 text-secondaryLight">
         {{ t("app.developer_option_description") }}
       </p>
       <div class="flex flex-1">
-        <ButtonSecondary
+        <HoppButtonSecondary
           outline
           filled
           :icon="copyIcon"
@@ -19,7 +19,7 @@
         />
       </div>
     </template>
-  </SmartModal>
+  </HoppSmartModal>
 </template>
 
 <script setup lang="ts">
@@ -29,10 +29,7 @@ import IconCheck from "~icons/lucide/check"
 import { copyToClipboard } from "~/helpers/utils/clipboard"
 import { useI18n } from "@composables/i18n"
 import { useToast } from "@composables/toast"
-import { useReadonlyStream } from "@composables/stream"
-import { authIdToken$ } from "~/helpers/fb/auth"
-
-const userAuthToken = useReadonlyStream(authIdToken$, null)
+import { platform } from "~/platform"
 
 const t = useI18n()
 
@@ -53,8 +50,9 @@ const copyIcon = refAutoReset<typeof IconCopy | typeof IconCheck>(
 
 // Copy user auth token to clipboard
 const copyUserAuthToken = () => {
-  if (userAuthToken.value) {
-    copyToClipboard(userAuthToken.value)
+  const token = platform.auth.getDevOptsBackendIDToken()
+  if (token) {
+    copyToClipboard(token)
     copyIcon.value = IconCheck
     toast.success(`${t("state.copied_to_clipboard")}`)
   } else {

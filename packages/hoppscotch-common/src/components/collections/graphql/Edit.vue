@@ -1,35 +1,27 @@
 <template>
-  <SmartModal
+  <HoppSmartModal
     v-if="show"
     dialog
     :title="`${t('collection.edit')}`"
     @close="hideModal"
   >
     <template #body>
-      <div class="flex flex-col">
-        <input
-          id="selectLabelGqlEdit"
-          v-model="name"
-          v-focus
-          class="input floating-input"
-          placeholder=" "
-          type="text"
-          autocomplete="off"
-          @keyup.enter="saveCollection"
-        />
-        <label for="selectLabelGqlEdit">
-          {{ t("action.label") }}
-        </label>
-      </div>
+      <HoppSmartInput
+        v-model="editingName"
+        placeholder=" "
+        :label="t('action.label')"
+        input-styles="floating-input"
+        @submit="saveCollection"
+      />
     </template>
     <template #footer>
       <span class="flex space-x-2">
-        <ButtonPrimary
+        <HoppButtonPrimary
           :label="`${t('action.save')}`"
           outline
           @click="saveCollection"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           :label="`${t('action.cancel')}`"
           outline
           filled
@@ -37,7 +29,7 @@
         />
       </span>
     </template>
-  </SmartModal>
+  </HoppSmartModal>
 </template>
 
 <script setup lang="ts">
@@ -45,13 +37,14 @@ import { ref, watch } from "vue"
 import { editGraphqlCollection } from "~/newstore/collections"
 import { useToast } from "@composables/toast"
 import { useI18n } from "@composables/i18n"
+import { HoppCollection } from "@hoppscotch/data"
 
-const props = defineProps({
-  show: Boolean,
-  editingCollection: { type: Object, default: () => ({}) },
-  editingCollectionIndex: { type: Number, default: null },
-  editingCollectionName: { type: String, default: null },
-})
+const props = defineProps<{
+  show: boolean
+  editingCollectionIndex: number | null
+  editingCollection: HoppCollection | null
+  editingCollectionName: string
+}>()
 
 const emit = defineEmits<{
   (e: "hide-modal"): void
@@ -60,17 +53,17 @@ const emit = defineEmits<{
 const t = useI18n()
 const toast = useToast()
 
-const name = ref<string | null>()
+const editingName = ref<string | null>()
 
 watch(
   () => props.editingCollectionName,
   (val) => {
-    name.value = val
+    editingName.value = val
   }
 )
 
 const saveCollection = () => {
-  if (!name.value) {
+  if (!editingName.value) {
     toast.error(`${t("collection.invalid_name")}`)
     return
   }
@@ -78,7 +71,7 @@ const saveCollection = () => {
   // TODO: Better typechecking here ?
   const collectionUpdated = {
     ...(props.editingCollection as any),
-    name: name.value,
+    name: editingName.value,
   }
 
   editGraphqlCollection(props.editingCollectionIndex, collectionUpdated)
@@ -86,7 +79,7 @@ const saveCollection = () => {
 }
 
 const hideModal = () => {
-  name.value = null
+  editingName.value = null
   emit("hide-modal")
 }
 </script>

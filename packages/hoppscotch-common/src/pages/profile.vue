@@ -4,52 +4,34 @@
       <div class="p-4">
         <div
           v-if="loadingCurrentUser"
-          class="flex flex-col items-center justify-center flex-1 p-4"
+          class="flex flex-1 flex-col items-center justify-center p-4"
         >
-          <SmartSpinner class="mb-4" />
+          <HoppSmartSpinner class="mb-4" />
         </div>
-        <div
+        <HoppSmartPlaceholder
           v-else-if="currentUser === null"
-          class="flex flex-col items-center justify-center"
+          :src="`/images/states/${colorMode.value}/login.svg`"
+          :alt="`${t('empty.profile')}`"
+          :text="`${t('empty.profile')}`"
         >
-          <img
-            :src="`/images/states/${colorMode.value}/login.svg`"
-            loading="lazy"
-            class="inline-flex flex-col object-contain object-center w-24 h-24 my-4"
-            :alt="`${t('empty.parameters')}`"
-          />
-          <p class="pb-4 text-center text-secondaryLight">
-            {{ t("empty.profile") }}
-          </p>
-          <ButtonPrimary
-            :label="t('auth.login')"
-            class="mb-4"
-            @click="invokeAction('modals.login.toggle')"
-          />
-        </div>
+          <template #body>
+            <HoppButtonPrimary
+              :label="t('auth.login')"
+              @click="invokeAction('modals.login.toggle')"
+            />
+          </template>
+        </HoppSmartPlaceholder>
         <div v-else class="space-y-8">
           <div
-            class="h-24 rounded bg-primaryLight -mb-11 md:h-32"
-            style="background-image: url('/images/cover.svg')"
+            class="-mb-12 h-24 rounded bg-primaryLight md:h-32"
+            style="background-image: url(/images/cover.svg)"
           ></div>
-          <div class="flex flex-col justify-between px-4 space-y-8 md:flex-row">
+          <div class="flex flex-col justify-between space-y-8 px-4 md:flex-row">
             <div class="flex items-end">
-              <ProfilePicture
-                v-if="currentUser.photoURL"
-                :url="currentUser.photoURL"
-                :alt="
-                  currentUser.displayName || t('profile.default_displayname')
-                "
-                class="ring-primary ring-4"
-                size="16"
-                rounded="lg"
-              />
-              <ProfilePicture
-                v-else
-                :initial="currentUser.displayName || currentUser.email"
-                rounded="lg"
-                size="16"
-                class="ring-primary ring-4"
+              <HoppSmartPicture
+                :name="currentUser.uid"
+                class="ring-8 ring-primary"
+                :size="64"
               />
               <div class="ml-4">
                 <label class="heading">
@@ -64,13 +46,13 @@
                     v-if="currentUser.emailVerified"
                     v-tippy="{ theme: 'tooltip' }"
                     :title="t('settings.verified_email')"
-                    class="ml-2 text-green-500 svg-icons focus:outline-none cursor-help"
+                    class="svg-icons ml-2 cursor-help text-green-500 focus:outline-none"
                   />
-                  <ButtonSecondary
+                  <HoppButtonSecondary
                     v-else
                     :label="t('settings.verify_email')"
                     :icon="IconVerified"
-                    class="px-1 py-0 ml-2"
+                    class="ml-2 px-1 py-0"
                     :loading="verifyingEmailAddress"
                     @click="sendEmailVerification"
                   />
@@ -79,7 +61,7 @@
             </div>
             <div class="flex items-end space-x-2">
               <div>
-                <SmartItem
+                <HoppSmartItem
                   to="/settings"
                   :icon="IconSettings"
                   :label="t('profile.app_settings')"
@@ -89,12 +71,12 @@
               <FirebaseLogout outline />
             </div>
           </div>
-          <SmartTabs
+          <HoppSmartTabs
             v-model="selectedProfileTab"
             styles="sticky overflow-x-auto flex-shrink-0 bg-primary top-0 z-10"
             render-inactive-tabs
           >
-            <SmartTab :id="'sync'" :label="t('settings.account')">
+            <HoppSmartTab id="sync" :label="t('settings.account')">
               <div class="grid grid-cols-1">
                 <section class="p-4">
                   <h4 class="font-semibold text-secondaryDark">
@@ -107,59 +89,49 @@
                     <label for="displayName">
                       {{ t("settings.profile_name") }}
                     </label>
-                    <form
-                      class="flex mt-2 md:max-w-sm"
-                      @submit.prevent="updateDisplayName"
+                    <HoppSmartInput
+                      v-model="displayName"
+                      :autofocus="false"
+                      styles="mt-2 md:max-w-sm"
+                      :placeholder="`${t('settings.profile_name')}`"
                     >
-                      <input
-                        id="displayName"
-                        v-model="displayName"
-                        class="input"
-                        :placeholder="`${t('settings.profile_name')}`"
-                        type="text"
-                        autocomplete="off"
-                        required
-                      />
-                      <ButtonSecondary
-                        filled
-                        outline
-                        :label="t('action.save')"
-                        class="ml-2 min-w-16"
-                        type="submit"
-                        :loading="updatingDisplayName"
-                      />
-                    </form>
+                      <template #button>
+                        <HoppButtonSecondary
+                          filled
+                          outline
+                          :label="t('action.save')"
+                          class="min-w-[4rem] ml-2"
+                          type="submit"
+                          :loading="updatingDisplayName"
+                          @click="updateDisplayName"
+                        />
+                      </template>
+                    </HoppSmartInput>
                   </div>
                   <div class="py-4">
                     <label for="emailAddress">
                       {{ t("settings.profile_email") }}
                     </label>
-                    <form
-                      class="flex mt-2 md:max-w-sm"
-                      @submit.prevent="updateEmailAddress"
+                    <HoppSmartInput
+                      v-model="emailAddress"
+                      :autofocus="false"
+                      styles="flex mt-2 md:max-w-sm"
+                      :placeholder="`${t('settings.profile_name')}`"
                     >
-                      <input
-                        id="emailAddress"
-                        v-model="emailAddress"
-                        class="input"
-                        :placeholder="`${t('settings.profile_name')}`"
-                        type="email"
-                        autocomplete="off"
-                        required
-                      />
-                      <ButtonSecondary
-                        filled
-                        outline
-                        :label="t('action.save')"
-                        class="ml-2 min-w-16"
-                        type="submit"
-                        :loading="updatingEmailAddress"
-                      />
-                    </form>
+                      <template #button>
+                        <HoppButtonSecondary
+                          filled
+                          outline
+                          :label="t('action.save')"
+                          class="min-w-[4rem] ml-2"
+                          type="submit"
+                          :loading="updatingEmailAddress"
+                          @click="updateEmailAddress"
+                        />
+                      </template>
+                    </HoppSmartInput>
                   </div>
                 </section>
-
-                <ProfileUserDelete />
 
                 <section class="p-4">
                   <h4 class="font-semibold text-secondaryDark">
@@ -168,41 +140,55 @@
                   <div class="my-1 text-secondaryLight">
                     {{ t("settings.sync_description") }}
                   </div>
-                  <div class="py-4 space-y-4">
+                  <div class="space-y-4 py-4">
                     <div class="flex items-center">
-                      <SmartToggle
+                      <HoppSmartToggle
                         :on="SYNC_COLLECTIONS"
                         @change="toggleSetting('syncCollections')"
                       >
                         {{ t("settings.sync_collections") }}
-                      </SmartToggle>
+                      </HoppSmartToggle>
                     </div>
                     <div class="flex items-center">
-                      <SmartToggle
+                      <HoppSmartToggle
                         :on="SYNC_ENVIRONMENTS"
                         @change="toggleSetting('syncEnvironments')"
                       >
                         {{ t("settings.sync_environments") }}
-                      </SmartToggle>
+                      </HoppSmartToggle>
                     </div>
                     <div class="flex items-center">
-                      <SmartToggle
+                      <HoppSmartToggle
                         :on="SYNC_HISTORY"
                         @change="toggleSetting('syncHistory')"
                       >
                         {{ t("settings.sync_history") }}
-                      </SmartToggle>
+                      </HoppSmartToggle>
                     </div>
                   </div>
                 </section>
 
-                <ProfileShortcodes />
+                <template v-if="platform.ui?.additionalProfileSections?.length">
+                  <template
+                    v-for="item in platform.ui?.additionalProfileSections"
+                    :key="item.id"
+                  >
+                    <component :is="item" />
+                  </template>
+                </template>
+
+                <ProfileUserDelete />
               </div>
-            </SmartTab>
-            <SmartTab :id="'teams'" :label="t('team.title')">
+            </HoppSmartTab>
+
+            <HoppSmartTab id="teams" :label="t('team.title')">
               <Teams :modal="false" class="p-4" />
-            </SmartTab>
-          </SmartTabs>
+            </HoppSmartTab>
+
+            <HoppSmartTab id="tokens" :label="t('access_tokens.tab_title')">
+              <AccessTokens />
+            </HoppSmartTab>
+          </HoppSmartTabs>
         </div>
       </div>
     </div>
@@ -210,27 +196,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watchEffect, computed } from "vue"
-import {
-  currentUser$,
-  probableUser$,
-  setDisplayName,
-  setEmailAddress,
-  verifyEmailAddress,
-} from "~/helpers/fb/auth"
-import { invokeAction } from "~/helpers/actions"
+import * as E from "fp-ts/Either"
+import { computed, ref, watchEffect } from "vue"
 
-import { useReadonlyStream } from "@composables/stream"
-import { useI18n } from "@composables/i18n"
-import { useToast } from "@composables/toast"
-import { useSetting } from "@composables/settings"
-import { useColorMode } from "@composables/theming"
+import { platform } from "~/platform"
+
 import { usePageHead } from "@composables/head"
+import { useI18n } from "@composables/i18n"
+import { useSetting } from "@composables/settings"
+import { useReadonlyStream } from "@composables/stream"
+import { useColorMode } from "@composables/theming"
+import { useToast } from "@composables/toast"
+import { invokeAction } from "~/helpers/actions"
 
 import { toggleSetting } from "~/newstore/settings"
 
-import IconVerified from "~icons/lucide/verified"
 import IconSettings from "~icons/lucide/settings"
+import IconVerified from "~icons/lucide/verified"
 
 type ProfileTabs = "sync" | "teams"
 
@@ -247,40 +229,57 @@ usePageHead({
 const SYNC_COLLECTIONS = useSetting("syncCollections")
 const SYNC_ENVIRONMENTS = useSetting("syncEnvironments")
 const SYNC_HISTORY = useSetting("syncHistory")
-const currentUser = useReadonlyStream(currentUser$, null)
-const probableUser = useReadonlyStream(probableUser$, null)
+const currentUser = useReadonlyStream(
+  platform.auth.getCurrentUserStream(),
+  platform.auth.getCurrentUser()
+)
+const probableUser = useReadonlyStream(
+  platform.auth.getProbableUserStream(),
+  platform.auth.getProbableUser()
+)
 
 const loadingCurrentUser = computed(() => {
   if (!probableUser.value) return false
   else if (!currentUser.value) return true
-  else return false
+  return false
 })
 
-const displayName = ref(currentUser.value?.displayName)
+const displayName = ref(currentUser.value?.displayName || "")
 const updatingDisplayName = ref(false)
-watchEffect(() => (displayName.value = currentUser.value?.displayName))
+watchEffect(() => (displayName.value = currentUser.value?.displayName || ""))
 
-const updateDisplayName = () => {
+const updateDisplayName = async () => {
+  if (!displayName.value) {
+    toast.error(`${t("error.empty_profile_name")}`)
+    return
+  }
+
+  if (currentUser.value?.displayName === displayName.value) {
+    toast.error(`${t("error.same_profile_name")}`)
+    return
+  }
+
   updatingDisplayName.value = true
-  setDisplayName(displayName.value as string)
-    .then(() => {
-      toast.success(`${t("profile.updated")}`)
-    })
-    .catch(() => {
-      toast.error(`${t("error.something_went_wrong")}`)
-    })
-    .finally(() => {
-      updatingDisplayName.value = false
-    })
+
+  const res = await platform.auth.setDisplayName(displayName.value)
+
+  if (E.isLeft(res)) {
+    toast.error(t("error.something_went_wrong"))
+  } else if (E.isRight(res)) {
+    toast.success(`${t("profile.updated")}`)
+  }
+
+  updatingDisplayName.value = false
 }
 
-const emailAddress = ref(currentUser.value?.email)
+const emailAddress = ref(currentUser.value?.email || "")
 const updatingEmailAddress = ref(false)
-watchEffect(() => (emailAddress.value = currentUser.value?.email))
+watchEffect(() => (emailAddress.value = currentUser.value?.email || ""))
 
 const updateEmailAddress = () => {
   updatingEmailAddress.value = true
-  setEmailAddress(emailAddress.value as string)
+  platform.auth
+    .setEmailAddress(emailAddress.value as string)
     .then(() => {
       toast.success(`${t("profile.updated")}`)
     })
@@ -296,7 +295,8 @@ const verifyingEmailAddress = ref(false)
 
 const sendEmailVerification = () => {
   verifyingEmailAddress.value = true
-  verifyEmailAddress()
+  platform.auth
+    .verifyEmailAddress()
     .then(() => {
       toast.success(`${t("profile.email_verification_mail")}`)
     })

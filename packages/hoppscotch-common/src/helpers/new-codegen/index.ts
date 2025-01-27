@@ -1,4 +1,4 @@
-import HTTPSnippet from "httpsnippet"
+import { HTTPSnippet } from "@hoppscotch/httpsnippet"
 import { HoppRESTRequest } from "@hoppscotch/data"
 import * as O from "fp-ts/Option"
 import * as E from "fp-ts/Either"
@@ -185,7 +185,7 @@ export const CodegenDefinitions = [
 /**
  * A type which defines all the valid code generators
  */
-export type CodegenName = typeof CodegenDefinitions[number]["name"]
+export type CodegenName = (typeof CodegenDefinitions)[number]["name"]
 
 /**
  * Generates Source Code for the given codgen
@@ -208,7 +208,10 @@ export const generateCode = (
         }).convert(codegenInfo.lang, codegenInfo.mode, {
           indent: "  ",
         }),
-      (e) => e
+      (e) => {
+        console.error(e)
+        return e
+      }
     ),
 
     // Only allow string output to pass through, else none

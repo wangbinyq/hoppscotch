@@ -24,7 +24,15 @@ type HoppErrors = {
   REQUEST_ERROR: HoppErrorData;
   INVALID_ARGUMENT: HoppErrorData;
   MALFORMED_ENV_FILE: HoppErrorPath & HoppErrorData;
+  BULK_ENV_FILE: HoppErrorPath & HoppErrorData;
   INVALID_FILE_TYPE: HoppErrorData;
+  INVALID_DATA_FILE_TYPE: HoppErrorData;
+  TOKEN_EXPIRED: HoppErrorData;
+  TOKEN_INVALID: HoppErrorData;
+  INVALID_ID: HoppErrorData;
+  INVALID_SERVER_URL: HoppErrorData;
+  SERVER_CONNECTION_REFUSED: HoppErrorData;
+  REPORT_EXPORT_FAILED: HoppErrorPath & HoppErrorData;
 };
 
 export type HoppErrorCode = keyof HoppErrors;

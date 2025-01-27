@@ -1,7 +1,148 @@
 <template>
   <div>
-    <div class="container space-y-8 divide-y divide-dividerLight">
-      <div class="md:grid md:gap-4 md:grid-cols-3">
+    <div class="container divide-y divide-dividerLight">
+      <div class="md:grid md:grid-cols-3 md:gap-4">
+        <div class="p-8 md:col-span-1">
+          <h3 class="heading">
+            {{ t("settings.general") }}
+          </h3>
+          <p class="my-1 text-secondaryLight">
+            {{ t("settings.general_description") }}
+          </p>
+        </div>
+        <div class="space-y-8 p-8 md:col-span-2">
+          <section>
+            <h4 class="font-semibold text-secondaryDark">
+              {{ t("settings.language") }}
+            </h4>
+            <div class="mt-4">
+              <SmartChangeLanguage />
+            </div>
+          </section>
+
+          <section>
+            <h4 class="font-semibold text-secondaryDark">
+              {{ t("settings.query_parameters_encoding") }}
+            </h4>
+            <div class="my-1 text-secondaryLight">
+              {{ t("settings.query_parameters_encoding_description") }}
+            </div>
+            <div class="mt-4">
+              <SmartEncodingPicker />
+            </div>
+          </section>
+
+          <section>
+            <h4 class="font-semibold text-secondaryDark">
+              {{ t("settings.experiments") }}
+            </h4>
+            <div class="my-1 text-secondaryLight">
+              {{ t("settings.experiments_notice") }}
+              <HoppSmartAnchor
+                class="link"
+                to="https://github.com/hoppscotch/hoppscotch/issues/new/choose"
+                blank
+                :label="t('app.contact_us')"
+              />.
+            </div>
+            <div class="space-y-4 py-4">
+              <div class="flex items-center">
+                <HoppSmartToggle
+                  v-if="hasPlatformTelemetry"
+                  :on="TELEMETRY_ENABLED"
+                  @change="showConfirmModal"
+                >
+                  {{ t("settings.telemetry") }}
+                </HoppSmartToggle>
+              </div>
+              <div class="flex items-center">
+                <HoppSmartToggle
+                  :on="EXPAND_NAVIGATION"
+                  @change="toggleSetting('EXPAND_NAVIGATION')"
+                >
+                  {{ t("settings.expand_navigation") }}
+                </HoppSmartToggle>
+              </div>
+              <div class="flex items-center">
+                <HoppSmartToggle
+                  :on="SIDEBAR_ON_LEFT"
+                  @change="toggleSetting('SIDEBAR_ON_LEFT')"
+                >
+                  {{ t("settings.sidebar_on_left") }}
+                </HoppSmartToggle>
+              </div>
+              <div v-if="hasAIExperimentsSupport" class="flex items-center">
+                <HoppSmartToggle
+                  :on="ENABLE_AI_EXPERIMENTS"
+                  @change="toggleSetting('ENABLE_AI_EXPERIMENTS')"
+                >
+                  {{ t("settings.ai_experiments") }}
+                </HoppSmartToggle>
+              </div>
+              <div
+                v-if="hasAIExperimentsSupport && ENABLE_AI_EXPERIMENTS"
+                class="flex items-center"
+              >
+                <div class="flex flex-col space-y-2 w-full">
+                  <label class="text-secondaryLight">{{
+                    t("settings.ai_request_naming_style")
+                  }}</label>
+                  <div class="flex">
+                    <tippy
+                      interactive
+                      trigger="click"
+                      theme="popover"
+                      :on-shown="() => namingStyleTippyActions?.focus()"
+                    >
+                      <HoppSmartSelectWrapper>
+                        <HoppButtonSecondary
+                          class="flex flex-1 !justify-start rounded-none pr-8"
+                          :label="activeNamingStyle?.label"
+                          outline
+                        />
+                      </HoppSmartSelectWrapper>
+                      <template #content="{ hide }">
+                        <div
+                          ref="namingStyleTippyActions"
+                          class="flex flex-col focus:outline-none"
+                          tabindex="0"
+                          @keyup.escape="hide()"
+                        >
+                          <HoppSmartLink
+                            v-for="style in supportedNamingStyles"
+                            :key="style"
+                            class="flex flex-1"
+                            @click="
+                              () => {
+                                AI_REQUEST_NAMING_STYLE = style.id
+                                hide()
+                              }
+                            "
+                          >
+                            <HoppSmartItem
+                              :label="style.label"
+                              :active-info-icon="
+                                AI_REQUEST_NAMING_STYLE === style.id
+                              "
+                              :info-icon="
+                                AI_REQUEST_NAMING_STYLE === style.id
+                                  ? IconDone
+                                  : null
+                              "
+                            />
+                          </HoppSmartLink>
+                        </div>
+                      </template>
+                    </tippy>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="md:grid md:grid-cols-3 md:gap-4">
         <div class="p-8 md:col-span-1">
           <h3 class="heading">
             {{ t("settings.theme") }}
@@ -10,7 +151,7 @@
             {{ t("settings.theme_description") }}
           </p>
         </div>
-        <div class="p-8 space-y-8 md:col-span-2">
+        <div class="space-y-8 p-8 md:col-span-2">
           <section>
             <h4 class="font-semibold text-secondaryDark">
               {{ t("settings.background") }}
@@ -36,68 +177,10 @@
               <SmartAccentModePicker />
             </div>
           </section>
-          <section>
-            <h4 class="font-semibold text-secondaryDark">
-              {{ t("settings.font_size") }}
-            </h4>
-            <div class="mt-4">
-              <SmartFontSizePicker />
-            </div>
-          </section>
-          <section>
-            <h4 class="font-semibold text-secondaryDark">
-              {{ t("settings.language") }}
-            </h4>
-            <div class="mt-4">
-              <SmartChangeLanguage />
-            </div>
-          </section>
-          <section>
-            <h4 class="font-semibold text-secondaryDark">
-              {{ t("settings.experiments") }}
-            </h4>
-            <div class="my-1 text-secondaryLight">
-              {{ t("settings.experiments_notice") }}
-              <SmartAnchor
-                class="link"
-                to="https://github.com/hoppscotch/hoppscotch/issues/new/choose"
-                blank
-                :label="t('app.contact_us')"
-              />.
-            </div>
-            <div class="py-4 space-y-4">
-              <div class="flex items-center">
-                <SmartToggle :on="TELEMETRY_ENABLED" @change="showConfirmModal">
-                  {{ t("settings.telemetry") }}
-                </SmartToggle>
-              </div>
-              <div class="flex items-center">
-                <SmartToggle
-                  :on="EXPAND_NAVIGATION"
-                  @change="toggleSetting('EXPAND_NAVIGATION')"
-                >
-                  {{ t("settings.expand_navigation") }}
-                </SmartToggle>
-              </div>
-              <div class="flex items-center">
-                <SmartToggle
-                  :on="SIDEBAR_ON_LEFT"
-                  @change="toggleSetting('SIDEBAR_ON_LEFT')"
-                >
-                  {{ t("settings.sidebar_on_left") }}
-                </SmartToggle>
-              </div>
-              <div class="flex items-center">
-                <SmartToggle :on="ZEN_MODE" @change="toggleSetting('ZEN_MODE')">
-                  {{ t("layout.zen_mode") }}
-                </SmartToggle>
-              </div>
-            </div>
-          </section>
         </div>
       </div>
 
-      <div class="md:grid md:gap-4 md:grid-cols-3">
+      <div class="md:grid md:grid-cols-3 md:gap-4">
         <div class="p-8 md:col-span-1">
           <h3 class="heading">
             {{ t("settings.interceptor") }}
@@ -106,115 +189,32 @@
             {{ t("settings.interceptor_description") }}
           </p>
         </div>
-        <div class="p-8 space-y-8 md:col-span-2">
-          <section>
+        <div class="space-y-8 p-8 md:col-span-2">
+          <section class="flex flex-col space-y-2">
             <h4 class="font-semibold text-secondaryDark">
-              {{ t("settings.extensions") }}
+              {{ t("settings.interceptor") }}
             </h4>
-            <div class="my-1 text-secondaryLight">
-              <span v-if="extensionVersion != null">
-                {{
-                  `${t("settings.extension_version")}: v${
-                    extensionVersion.major
-                  }.${extensionVersion.minor}`
-                }}
-              </span>
-              <span v-else>
-                {{ t("settings.extension_version") }}:
-                {{ t("settings.extension_ver_not_reported") }}
-              </span>
-            </div>
-            <div class="flex flex-col py-4 space-y-2">
-              <span>
-                <SmartItem
-                  to="https://chrome.google.com/webstore/detail/hoppscotch-browser-extens/amknoiejhlmhancpahfcfcfhllgkpbld"
-                  blank
-                  :icon="IconChrome"
-                  label="Chrome"
-                  :info-icon="hasChromeExtInstalled ? IconCheckCircle : null"
-                  :active-info-icon="hasChromeExtInstalled"
-                  outline
-                />
-              </span>
-              <span>
-                <SmartItem
-                  to="https://addons.mozilla.org/en-US/firefox/addon/hoppscotch"
-                  blank
-                  :icon="IconFirefox"
-                  label="Firefox"
-                  :info-icon="hasFirefoxExtInstalled ? IconCheckCircle : null"
-                  :active-info-icon="hasFirefoxExtInstalled"
-                  outline
-                />
-              </span>
-            </div>
-            <div class="py-4 space-y-4">
-              <div class="flex items-center">
-                <SmartToggle
-                  :on="EXTENSIONS_ENABLED"
-                  @change="toggleInterceptor('extension')"
-                >
-                  {{ t("settings.extensions_use_toggle") }}
-                </SmartToggle>
-              </div>
-            </div>
+            <AppInterceptor :is-tooltip-component="false" />
           </section>
-          <section>
+          <section v-for="[id, settings] in interceptorsWithSettings" :key="id">
             <h4 class="font-semibold text-secondaryDark">
-              {{ t("settings.proxy") }}
+              {{ settings.entryTitle(t) }}
             </h4>
-            <div class="my-1 text-secondaryLight">
-              {{
-                `${t("settings.official_proxy_hosting")} ${t(
-                  "settings.read_the"
-                )}`
-              }}
-              <SmartAnchor
-                class="link"
-                to="https://docs.hoppscotch.io/privacy"
-                blank
-                :label="t('app.proxy_privacy_policy')"
-              />.
-            </div>
-            <div class="py-4 space-y-4">
-              <div class="flex items-center">
-                <SmartToggle
-                  :on="PROXY_ENABLED"
-                  @change="toggleInterceptor('proxy')"
-                >
-                  {{ t("settings.proxy_use_toggle") }}
-                </SmartToggle>
-              </div>
-            </div>
-            <div class="flex items-center py-4 space-x-2">
-              <div class="relative flex flex-col flex-1">
-                <input
-                  id="url"
-                  v-model="PROXY_URL"
-                  class="input floating-input"
-                  placeholder=" "
-                  type="url"
-                  autocomplete="off"
-                  :disabled="!PROXY_ENABLED"
-                />
-                <label for="url">
-                  {{ t("settings.proxy_url") }}
-                </label>
-              </div>
-              <ButtonSecondary
-                v-tippy="{ theme: 'tooltip' }"
-                :title="t('settings.reset_default')"
-                :icon="clearIcon"
-                outline
-                class="rounded"
-                @click="resetProxy"
-              />
-            </div>
+            <component :is="settings.component" />
           </section>
         </div>
       </div>
+
+      <template v-if="platform.ui?.additionalSettingsSections?.length">
+        <template
+          v-for="item in platform.ui?.additionalSettingsSections"
+          :key="item.id"
+        >
+          <component :is="item" />
+        </template>
+      </template>
     </div>
-    <SmartConfirmModal
+    <HoppSmartConfirmModal
       :show="confirmRemove"
       :title="`${t('confirm.remove_telemetry')} ${t(
         'settings.telemetry_helps_us'
@@ -231,61 +231,76 @@
 </template>
 
 <script setup lang="ts">
-import IconChrome from "~icons/brands/chrome"
-import IconCheckCircle from "~icons/lucide/check-circle"
-import IconFirefox from "~icons/brands/firefox"
-import IconRotateCCW from "~icons/lucide/rotate-ccw"
-import IconCheck from "~icons/lucide/check"
 import { ref, computed, watch } from "vue"
-import { refAutoReset } from "@vueuse/core"
 import { applySetting, toggleSetting } from "~/newstore/settings"
 import { useSetting } from "@composables/settings"
-import { useToast } from "@composables/toast"
 import { useI18n } from "@composables/i18n"
 import { useColorMode } from "@composables/theming"
-import { useReadonlyStream } from "@composables/stream"
-
-import { browserIsChrome, browserIsFirefox } from "~/helpers/utils/userAgent"
-import { extensionStatus$ } from "~/newstore/HoppExtension"
 import { usePageHead } from "@composables/head"
+import { useService } from "dioc/vue"
+import { InterceptorService } from "~/services/interceptor.service"
+import { pipe } from "fp-ts/function"
+import * as O from "fp-ts/Option"
+import * as A from "fp-ts/Array"
+import { platform } from "~/platform"
+import IconDone from "~icons/lucide/check"
 
 const t = useI18n()
-const toast = useToast()
 const colorMode = useColorMode()
 
 usePageHead({
   title: computed(() => t("navigation.settings")),
 })
 
+const interceptorService = useService(InterceptorService)
+const interceptorsWithSettings = computed(() =>
+  pipe(
+    interceptorService.availableInterceptors.value,
+    A.filterMap((interceptor) =>
+      interceptor.settingsPageEntry
+        ? O.some([
+            interceptor.interceptorID,
+            interceptor.settingsPageEntry,
+          ] as const)
+        : O.none
+    )
+  )
+)
+
 const ACCENT_COLOR = useSetting("THEME_COLOR")
-const PROXY_ENABLED = useSetting("PROXY_ENABLED")
 const PROXY_URL = useSetting("PROXY_URL")
-const EXTENSIONS_ENABLED = useSetting("EXTENSIONS_ENABLED")
 const TELEMETRY_ENABLED = useSetting("TELEMETRY_ENABLED")
 const EXPAND_NAVIGATION = useSetting("EXPAND_NAVIGATION")
 const SIDEBAR_ON_LEFT = useSetting("SIDEBAR_ON_LEFT")
-const ZEN_MODE = useSetting("ZEN_MODE")
+const ENABLE_AI_EXPERIMENTS = useSetting("ENABLE_AI_EXPERIMENTS")
+const AI_REQUEST_NAMING_STYLE = useSetting("AI_REQUEST_NAMING_STYLE")
 
-const currentExtensionStatus = useReadonlyStream(extensionStatus$, null)
+const supportedNamingStyles = [
+  {
+    id: "DESCRIPTIVE_WITH_SPACES" as const,
+    label: t("settings.ai_request_naming_style_descriptive_with_spaces"),
+  },
+  {
+    id: "camelCase" as const,
+    label: t("settings.ai_request_naming_style_camel_case"),
+  },
+  {
+    id: "snake_case" as const,
+    label: t("settings.ai_request_naming_style_snake_case"),
+  },
+  {
+    id: "PascalCase" as const,
+    label: t("settings.ai_request_naming_style_pascal_case"),
+  },
+]
 
-const extensionVersion = computed(() => {
-  return currentExtensionStatus.value === "available"
-    ? window.__POSTWOMAN_EXTENSION_HOOK__?.getVersion() ?? null
-    : null
-})
-
-const hasChromeExtInstalled = computed(
-  () => browserIsChrome() && currentExtensionStatus.value === "available"
+const activeNamingStyle = computed(() =>
+  supportedNamingStyles.find(
+    (style) => style.id === AI_REQUEST_NAMING_STYLE.value
+  )
 )
 
-const hasFirefoxExtInstalled = computed(
-  () => browserIsFirefox() && currentExtensionStatus.value === "available"
-)
-
-const clearIcon = refAutoReset<typeof IconRotateCCW | typeof IconCheck>(
-  IconRotateCCW,
-  1000
-)
+const hasPlatformTelemetry = Boolean(platform.platformFeatureFlags.hasTelemetry)
 
 const confirmRemove = ref(false)
 
@@ -293,9 +308,8 @@ const proxySettings = computed(() => ({
   url: PROXY_URL.value,
 }))
 
-watch(ZEN_MODE, (mode) => {
-  applySetting("EXPAND_NAVIGATION", !mode)
-})
+const hasAIExperimentsSupport =
+  !!platform.experiments?.aiExperiments?.enableAIExperiments
 
 watch(
   proxySettings,
@@ -305,32 +319,9 @@ watch(
   { deep: true }
 )
 
-// Extensions and proxy should not be enabled at the same time
-const toggleInterceptor = (interceptor: "extension" | "proxy") => {
-  if (interceptor === "extension") {
-    EXTENSIONS_ENABLED.value = !EXTENSIONS_ENABLED.value
-
-    if (EXTENSIONS_ENABLED.value) {
-      PROXY_ENABLED.value = false
-    }
-  } else {
-    PROXY_ENABLED.value = !PROXY_ENABLED.value
-
-    if (PROXY_ENABLED.value) {
-      EXTENSIONS_ENABLED.value = false
-    }
-  }
-}
-
 const showConfirmModal = () => {
   if (TELEMETRY_ENABLED.value) confirmRemove.value = true
   else toggleSetting("TELEMETRY_ENABLED")
-}
-
-const resetProxy = () => {
-  applySetting("PROXY_URL", `https://proxy.hoppscotch.io/`)
-  clearIcon.value = IconCheck
-  toast.success(`${t("state.cleared")}`)
 }
 
 const getColorModeName = (colorMode: string) => {
@@ -347,4 +338,6 @@ const getColorModeName = (colorMode: string) => {
       return "settings.system_mode"
   }
 }
+
+const namingStyleTippyActions = ref<any | null>(null)
 </script>

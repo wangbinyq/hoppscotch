@@ -1,22 +1,23 @@
-import * as T from "fp-ts/Task";
+import { HoppCollection, HoppRESTRequest } from "@hoppscotch/data";
+import chalk from "chalk";
+import { log } from "console";
 import * as A from "fp-ts/Array";
 import { pipe } from "fp-ts/function";
-import { bold } from "chalk";
-import { log } from "console";
-import round from "lodash/round";
-import { HoppCollection, HoppRESTRequest } from "@hoppscotch/data";
+import { round } from "lodash-es";
+
+import { CollectionRunnerParam } from "../types/collections";
 import {
+  CollectionQueue,
   HoppEnvs,
-  CollectionStack,
-  RequestReport,
   ProcessRequestParams,
+  RequestReport,
 } from "../types/request";
 import {
-  getRequestMetrics,
-  preProcessRequest,
-  processRequest,
-} from "./request";
-import { exceptionColors } from "./getters";
+  PreRequestMetrics,
+  RequestMetrics,
+  TestMetrics,
+} from "../types/response";
+import { DEFAULT_DURATION_PRECISION } from "./constants";
 import {
   printErrorsReport,
   printFailedTestsReport,
@@ -24,17 +25,17 @@ import {
   printRequestsMetrics,
   printTestsMetrics,
 } from "./display";
-import {
-  PreRequestMetrics,
-  RequestMetrics,
-  TestMetrics,
-} from "../types/response";
-import { getTestMetrics } from "./test";
-import { DEFAULT_DURATION_PRECISION } from "./constants";
+import { exceptionColors } from "./getters";
 import { getPreRequestMetrics } from "./pre-request";
-import { CollectionRunnerParam } from "../types/collections";
+import { buildJUnitReport, generateJUnitReportExport } from "./reporters/junit";
+import {
+  getRequestMetrics,
+  preProcessRequest,
+  processRequest,
+} from "./request";
+import { getTestMetrics } from "./test";
 
-const { WARN, FAIL } = exceptionColors;
+const { WARN, FAIL, INFO } = exceptionColors;
 
 /**
  * Processes each requests within collections to prints details of subsequent requests,
@@ -42,72 +43,134 @@ const { WARN, FAIL } = exceptionColors;
  * @param param Data of hopp-collection with hopp-requests, envs to be processed.
  * @returns List of report for each processed request.
  */
-export const collectionsRunner =
-  (param: CollectionRunnerParam): T.Task<RequestReport[]> =>
-  async () => {
-    const envs: HoppEnvs = param.envs;
-    const delay = param.delay ?? 0;
-    const requestsReport: RequestReport[] = [];
-    const collectionStack: CollectionStack[] = getCollectionStack(
-      param.collections
-    );
 
-    while (collectionStack.length) {
-      // Pop out top-most collection from stack to be processed.
-      const { collection, path } = <CollectionStack>collectionStack.pop();
+export const collectionsRunner = async (
+  param: CollectionRunnerParam
+): Promise<RequestReport[]> => {
+  const { collections, envs, delay, iterationCount, iterationData } = param;
 
-      // Processing each request in collection
-      for (const request of collection.requests) {
-        const _request = preProcessRequest(request);
-        const requestPath = `${path}/${_request.name}`;
-        const processRequestParams: ProcessRequestParams = {
-          path: requestPath,
-          request: _request,
-          envs,
-          delay,
-        };
+  const resolvedDelay = delay ?? 0;
 
-        // Request processing initiated message.
-        log(WARN(`\nRunning: ${bold(requestPath)}`));
+  const requestsReport: RequestReport[] = [];
+  const collectionQueue = getCollectionQueue(collections);
 
-        // Processing current request.
-        const result = await processRequest(processRequestParams)();
+  // If iteration count is not supplied, it should be based on the size of iteration data if in scope
+  const resolvedIterationCount = iterationCount ?? iterationData?.length ?? 1;
 
-        // Updating global & selected envs with new envs from processed-request output.
-        const { global, selected } = result.envs;
-        envs.global = global;
-        envs.selected = selected;
+  const originalSelectedEnvs = [...envs.selected];
 
-        // Storing current request's report.
-        const requestReport = result.report;
-        requestsReport.push(requestReport);
-      }
-
-      // Pushing remaining folders realted collection to stack.
-      for (const folder of collection.folders) {
-        collectionStack.push({
-          path: `${path}/${folder.name}`,
-          collection: folder,
-        });
-      }
+  for (let count = 0; count < resolvedIterationCount; count++) {
+    if (resolvedIterationCount > 1) {
+      log(INFO(`\nIteration: ${count + 1}/${resolvedIterationCount}`));
     }
 
-    return requestsReport;
-  };
+    // Reset `envs` to the original value at the start of each iteration
+    envs.selected = [...originalSelectedEnvs];
 
+    if (iterationData) {
+      // Ensure last item is picked if the iteration count exceeds size of the iteration data
+      const iterationDataItem =
+        iterationData[Math.min(count, iterationData.length - 1)];
+
+      // Ensure iteration data takes priority over supplied environment variables
+      envs.selected = envs.selected
+        .filter(
+          (envPair) =>
+            !iterationDataItem.some((dataPair) => dataPair.key === envPair.key)
+        )
+        .concat(iterationDataItem);
+    }
+
+    for (const { collection, path } of collectionQueue) {
+      await processCollection(
+        collection,
+        path,
+        envs,
+        resolvedDelay,
+        requestsReport
+      );
+    }
+  }
+
+  return requestsReport;
+};
+
+const processCollection = async (
+  collection: HoppCollection,
+  path: string,
+  envs: HoppEnvs,
+  delay: number,
+  requestsReport: RequestReport[]
+) => {
+  // Process each request in the collection
+  for (const request of collection.requests) {
+    const _request = preProcessRequest(request as HoppRESTRequest, collection);
+    const requestPath = `${path}/${_request.name}`;
+    const processRequestParams: ProcessRequestParams = {
+      path: requestPath,
+      request: _request,
+      envs,
+      delay,
+    };
+
+    // Request processing initiated message.
+    log(WARN(`\nRunning: ${chalk.bold(requestPath)}`));
+
+    // Processing current request.
+    const result = await processRequest(processRequestParams)();
+
+    // Updating global & selected envs with new envs from processed-request output.
+    const { global, selected } = result.envs;
+    envs.global = global;
+    envs.selected = selected;
+
+    // Storing current request's report.
+    const requestReport = result.report;
+    requestsReport.push(requestReport);
+  }
+
+  // Process each folder in the collection
+  for (const folder of collection.folders) {
+    const updatedFolder: HoppCollection = { ...folder };
+
+    if (updatedFolder.auth?.authType === "inherit") {
+      updatedFolder.auth = collection.auth;
+    }
+
+    if (collection.headers?.length) {
+      // Filter out header entries present in the parent collection under the same name
+      // This ensures the folder headers take precedence over the collection headers
+      const filteredHeaders = collection.headers.filter(
+        (collectionHeaderEntries) => {
+          return !updatedFolder.headers.some(
+            (folderHeaderEntries) =>
+              folderHeaderEntries.key === collectionHeaderEntries.key
+          );
+        }
+      );
+      updatedFolder.headers.push(...filteredHeaders);
+    }
+
+    await processCollection(
+      updatedFolder,
+      `${path}/${updatedFolder.name}`,
+      envs,
+      delay,
+      requestsReport
+    );
+  }
+};
 /**
  * Transforms collections to generate collection-stack which describes each collection's
  * path within collection & the collection itself.
  * @param collections Hopp-collection objects to be mapped to collection-stack type.
  * @returns Mapped collections to collection-stack.
  */
-const getCollectionStack = (
-  collections: HoppCollection<HoppRESTRequest>[]
-): CollectionStack[] =>
+const getCollectionQueue = (collections: HoppCollection[]): CollectionQueue[] =>
   pipe(
     collections,
     A.map(
-      (collection) => <CollectionStack>{ collection, path: collection.name }
+      (collection) => <CollectionQueue>{ collection, path: collection.name }
     )
   );
 
@@ -118,10 +181,11 @@ const getCollectionStack = (
  * path of each request within collection-json file, failed-tests-report, errors,
  * total execution duration for requests, pre-request-scripts, test-scripts.
  * @returns True, if collection runner executed without any errors or failed test-cases.
- * False, if errors occured or test-cases failed.
+ * False, if errors occurred or test-cases failed.
  */
 export const collectionsRunnerResult = (
-  requestsReport: RequestReport[]
+  requestsReport: RequestReport[],
+  reporterJUnitExportPath?: string
 ): boolean => {
   const overallTestMetrics = <TestMetrics>{
     tests: { failed: 0, passed: 0 },
@@ -139,6 +203,9 @@ export const collectionsRunnerResult = (
   };
   let finalResult = true;
 
+  let totalErroredTestCases = 0;
+  let totalFailedTestCases = 0;
+
   // Printing requests-report details of failed-tests and errors
   for (const requestReport of requestsReport) {
     const { path, tests, errors, result, duration } = requestReport;
@@ -151,6 +218,19 @@ export const collectionsRunnerResult = (
     printFailedTestsReport(path, tests);
 
     printErrorsReport(path, errors);
+
+    if (reporterJUnitExportPath) {
+      const { failedRequestTestCases, erroredRequestTestCases } =
+        buildJUnitReport({
+          path,
+          tests,
+          errors,
+          duration: duration.test,
+        });
+
+      totalFailedTestCases += failedRequestTestCases;
+      totalErroredTestCases += erroredRequestTestCases;
+    }
 
     /**
      * Extracting current request report's test-metrics and updating
@@ -203,6 +283,19 @@ export const collectionsRunnerResult = (
   printRequestsMetrics(overallRequestMetrics);
   printPreRequestMetrics(overallPreRequestMetrics);
 
+  if (reporterJUnitExportPath) {
+    const totalTestCases =
+      overallTestMetrics.tests.failed + overallTestMetrics.tests.passed;
+
+    generateJUnitReportExport({
+      totalTestCases,
+      totalFailedTestCases,
+      totalErroredTestCases,
+      testDuration: overallTestMetrics.duration,
+      reporterJUnitExportPath,
+    });
+  }
+
   return finalResult;
 };
 
@@ -213,10 +306,10 @@ export const collectionsRunnerResult = (
  * Else, exit with code 1.
  * @param result Boolean defining the collections-runner result.
  */
-export const collectionsRunnerExit = (result: boolean) => {
+export const collectionsRunnerExit = (result: boolean): never => {
   if (!result) {
     const EXIT_MSG = FAIL(`\nExited with code 1`);
-    process.stdout.write(EXIT_MSG);
+    process.stderr.write(EXIT_MSG);
     process.exit(1);
   }
   process.exit(0);

@@ -1,10 +1,15 @@
 <template>
-  <div class="flex flex-col flex-1">
+  <div class="flex flex-1 flex-col">
     <div
-      class="sticky z-10 flex items-center justify-between flex-shrink-0 pl-4 overflow-x-auto border-b bg-primary border-dividerLight top-upperSecondaryStickyFold"
+      class="sticky z-10 flex items-center justify-between border-y border-dividerLight bg-primary pl-4"
+      :class="[
+        isCollectionProperty
+          ? 'top-propertiesPrimaryStickyFold'
+          : 'top-sidebarPrimaryStickyFold',
+      ]"
     >
       <span class="flex items-center">
-        <label class="font-semibold truncate text-secondaryLight">
+        <label class="truncate font-semibold text-secondaryLight">
           {{ t("authorization.type") }}
         </label>
         <tippy
@@ -13,9 +18,12 @@
           theme="popover"
           :on-shown="() => tippyActions.focus()"
         >
-          <span class="select-wrapper">
-            <ButtonSecondary class="pr-8 ml-2 rounded-none" :label="authName" />
-          </span>
+          <HoppSmartSelectWrapper>
+            <HoppButtonSecondary
+              class="ml-2 rounded-none pr-8"
+              :label="authName"
+            />
+          </HoppSmartSelectWrapper>
           <template #content="{ hide }">
             <div
               ref="tippyActions"
@@ -23,57 +31,17 @@
               tabindex="0"
               @keyup.escape="hide()"
             >
-              <SmartItem
-                label="None"
-                :icon="authName === 'None' ? IconCircleDot : IconCircle"
-                :active="authName === 'None'"
+              <HoppSmartItem
+                v-for="item in authTypes"
+                :key="item.key"
+                :label="item.label"
+                :icon="item.key === authType ? IconCircleDot : IconCircle"
+                :active="item.key === authType"
                 @click="
                   () => {
-                    authType = 'none'
-                    hide()
-                  }
-                "
-              />
-              <SmartItem
-                label="Basic Auth"
-                :icon="authName === 'Basic Auth' ? IconCircleDot : IconCircle"
-                :active="authName === 'Basic Auth'"
-                @click="
-                  () => {
-                    authType = 'basic'
-                    hide()
-                  }
-                "
-              />
-              <SmartItem
-                label="Bearer Token"
-                :icon="authName === 'Bearer' ? IconCircleDot : IconCircle"
-                :active="authName === 'Bearer'"
-                @click="
-                  () => {
-                    authType = 'bearer'
-                    hide()
-                  }
-                "
-              />
-              <SmartItem
-                label="OAuth 2.0"
-                :icon="authName === 'OAuth 2.0' ? IconCircleDot : IconCircle"
-                :active="authName === 'OAuth 2.0'"
-                @click="
-                  () => {
-                    authType = 'oauth-2'
-                    hide()
-                  }
-                "
-              />
-              <SmartItem
-                label="API key"
-                :icon="authName === 'API key' ? IconCircleDot : IconCircle"
-                :active="authName === 'API key'"
-                @click="
-                  () => {
-                    authType = 'api-key'
+                    item.handler
+                      ? item.handler()
+                      : (auth = { ...auth, authType: item.key } as HoppGQLAuth)
                     hide()
                   }
                 "
@@ -83,27 +51,27 @@
         </tippy>
       </span>
       <div class="flex">
-        <!-- <SmartCheckbox
+        <!-- <HoppSmartCheckbox
           :on="!URLExcludes.auth"
           @change="setExclude('auth', !$event)"
         >
-          {{ t("authorization.include_in_url") }}
-        </SmartCheckbox> -->
-        <SmartCheckbox
+          {{ $t("authorization.include_in_url") }}
+        </HoppSmartCheckbox>-->
+        <HoppSmartCheckbox
           :on="authActive"
           class="px-2"
           @change="authActive = !authActive"
         >
           {{ t("state.enabled") }}
-        </SmartCheckbox>
-        <ButtonSecondary
+        </HoppSmartCheckbox>
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
-          to="https://docs.hoppscotch.io/features/authorization"
+          to="https://docs.hoppscotch.io/documentation/features/authorization"
           blank
           :title="t('app.wiki')"
           :icon="IconHelpCircle"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
           :title="t('action.clear')"
           :icon="IconTrash2"
@@ -111,129 +79,94 @@
         />
       </div>
     </div>
-    <div
-      v-if="authType === 'none'"
-      class="flex flex-col items-center justify-center p-4 text-secondaryLight"
+    <HoppSmartPlaceholder
+      v-if="auth.authType === 'none'"
+      :src="`/images/states/${colorMode.value}/login.svg`"
+      :alt="`${t('empty.authorization')}`"
+      :text="t('empty.authorization')"
     >
-      <img
-        :src="`/images/states/${colorMode.value}/login.svg`"
-        loading="lazy"
-        class="inline-flex flex-col object-contain object-center w-16 h-16 my-4"
-        :alt="`${t('empty.authorization')}`"
-      />
-      <span class="pb-4 text-center">
-        {{ t("empty.authorization") }}
-      </span>
-      <ButtonSecondary
-        outline
-        :label="t('app.documentation')"
-        to="https://docs.hoppscotch.io/features/authorization"
-        blank
-        :icon="IconExternalLink"
-        reverse
-        class="mb-4"
-      />
-    </div>
+      <template #body>
+        <HoppButtonSecondary
+          outline
+          :label="t('app.documentation')"
+          to="https://docs.hoppscotch.io/documentation/features/authorization"
+          blank
+          :icon="IconExternalLink"
+          reverse
+        />
+      </template>
+    </HoppSmartPlaceholder>
     <div v-else class="flex flex-1 border-b border-dividerLight">
       <div class="w-2/3 border-r border-dividerLight">
-        <div v-if="authType === 'basic'">
+        <div v-if="auth.authType === 'basic'">
           <div class="flex flex-1 border-b border-dividerLight">
             <SmartEnvInput
-              v-model="basicUsername"
+              v-model="auth.username"
+              :environment-highlights="false"
               :placeholder="t('authorization.username')"
             />
           </div>
           <div class="flex flex-1 border-b border-dividerLight">
             <SmartEnvInput
-              v-model="basicPassword"
+              v-model="auth.password"
+              :environment-highlights="false"
               :placeholder="t('authorization.password')"
             />
           </div>
         </div>
-        <div v-if="authType === 'bearer'">
+        <div v-if="auth.authType === 'inherit'" class="p-4">
+          <span v-if="inheritedProperties?.auth">
+            {{
+              t("authorization.inherited_from", {
+                auth: getAuthName(
+                  (inheritedProperties.auth.inheritedAuth as HoppGQLAuth)
+                    .authType
+                ),
+                collection: inheritedProperties?.auth.parentName,
+              })
+            }}
+          </span>
+          <span v-else>
+            {{ t("authorization.save_to_inherit") }}
+          </span>
+        </div>
+        <div v-if="auth.authType === 'bearer'">
           <div class="flex flex-1 border-b border-dividerLight">
-            <SmartEnvInput v-model="bearerToken" placeholder="Token" />
+            <SmartEnvInput
+              v-model="auth.token"
+              :environment-highlights="false"
+              placeholder="Token"
+            />
           </div>
         </div>
-        <div v-if="authType === 'oauth-2'">
+        <div v-if="auth.authType === 'oauth-2'">
           <div class="flex flex-1 border-b border-dividerLight">
-            <SmartEnvInput v-model="oauth2Token" placeholder="Token" />
+            <SmartEnvInput
+              v-model="auth.grantTypeInfo.token"
+              :environment-highlights="false"
+              placeholder="Token"
+            />
           </div>
-          <HttpOAuth2Authorization />
+          <HttpAuthorizationOAuth2 v-model="auth" source="GraphQL" />
         </div>
-        <div v-if="authType === 'api-key'">
-          <div class="flex flex-1 border-b border-dividerLight">
-            <SmartEnvInput v-model="apiKey" placeholder="Key" />
-          </div>
-          <div class="flex flex-1 border-b border-dividerLight">
-            <SmartEnvInput v-model="apiValue" placeholder="Value" />
-          </div>
-          <div class="flex items-center border-b border-dividerLight">
-            <span class="flex items-center">
-              <label class="ml-4 text-secondaryLight">
-                {{ t("authorization.pass_key_by") }}
-              </label>
-              <tippy
-                interactive
-                trigger="click"
-                theme="popover"
-                :on-shown="() => authTippyActions.focus()"
-              >
-                <span class="select-wrapper">
-                  <ButtonSecondary
-                    :label="addTo || t('state.none')"
-                    class="pr-8 ml-2 rounded-none"
-                  />
-                </span>
-                <template #content="{ hide }">
-                  <div
-                    ref="authTippyActions"
-                    class="flex flex-col focus:outline-none"
-                    tabindex="0"
-                    @keyup.escape="hide()"
-                  >
-                    <SmartItem
-                      :icon="addTo === 'Headers' ? IconCircleDot : IconCircle"
-                      :active="addTo === 'Headers'"
-                      :label="'Headers'"
-                      @click="
-                        () => {
-                          addTo = 'Headers'
-                          hide()
-                        }
-                      "
-                    />
-                    <SmartItem
-                      :icon="
-                        addTo === 'Query params' ? IconCircleDot : IconCircle
-                      "
-                      :active="addTo === 'Query params'"
-                      :label="'Query params'"
-                      @click="
-                        () => {
-                          addTo = 'Query params'
-                          hide()
-                        }
-                      "
-                    />
-                  </div>
-                </template>
-              </tippy>
-            </span>
-          </div>
+        <div v-if="auth.authType === 'api-key'">
+          <HttpAuthorizationApiKey v-model="auth" />
+        </div>
+        <div v-if="auth.authType === 'aws-signature'">
+          <HttpAuthorizationAWSSign v-model="auth" />
         </div>
       </div>
       <div
-        class="sticky flex-shrink-0 h-full p-4 overflow-auto overflow-x-auto bg-primary top-upperTertiaryStickyFold min-w-46 max-w-1/3 z-9"
+        class="z-[9] sticky top-upperTertiaryStickyFold h-full min-w-[12rem] max-w-1/3 flex-shrink-0 overflow-auto overflow-x-auto bg-primary p-4"
       >
         <div class="pb-2 text-secondaryLight">
           {{ t("helpers.authorization") }}
         </div>
-        <SmartAnchor
+        <HoppSmartAnchor
           class="link"
           :label="t('authorization.learn')"
           :icon="IconExternalLink"
-          to="https://docs.hoppscotch.io/features/authorization"
+          to="https://docs.hoppscotch.io/documentation/features/authorization"
           blank
           reverse
         />
@@ -243,64 +176,175 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, Ref } from "vue"
-import {
-  HoppGQLAuthAPIKey,
-  HoppGQLAuthBasic,
-  HoppGQLAuthBearer,
-  HoppGQLAuthOAuth2,
-} from "@hoppscotch/data"
-
-import { pluckRef } from "@composables/ref"
-import { useStream } from "@composables/stream"
 import { useI18n } from "@composables/i18n"
+import { pluckRef } from "@composables/ref"
 import { useColorMode } from "@composables/theming"
-import { gqlAuth$, setGQLAuth } from "~/newstore/GQLSession"
+import {
+  HoppGQLAuth,
+  HoppGQLAuthOAuth2,
+  HoppGQLAuthAWSSignature,
+} from "@hoppscotch/data"
+import { useVModel } from "@vueuse/core"
+import { computed, onMounted, ref } from "vue"
 
-import IconTrash2 from "~icons/lucide/trash-2"
-import IconHelpCircle from "~icons/lucide/help-circle"
-import IconExternalLink from "~icons/lucide/external-link"
-import IconCircleDot from "~icons/lucide/circle-dot"
+import { HoppInheritedProperty } from "~/helpers/types/HoppInheritedProperties"
+
 import IconCircle from "~icons/lucide/circle"
+import IconCircleDot from "~icons/lucide/circle-dot"
+import IconExternalLink from "~icons/lucide/external-link"
+import IconHelpCircle from "~icons/lucide/help-circle"
+import IconTrash2 from "~icons/lucide/trash-2"
+
+import { getDefaultAuthCodeOauthFlowParams } from "~/services/oauth/flows/authCode"
+
+type AuthType = {
+  key: HoppGQLAuth["authType"]
+  label: string
+  handler?: () => void
+}
 
 const t = useI18n()
+
 const colorMode = useColorMode()
 
-const auth = useStream(
-  gqlAuth$,
-  { authType: "none", authActive: true },
-  setGQLAuth
-)
-const authType = pluckRef(auth, "authType")
-const authName = computed(() => {
-  if (authType.value === "basic") return "Basic Auth"
-  else if (authType.value === "bearer") return "Bearer"
-  else if (authType.value === "oauth-2") return "OAuth 2.0"
-  else if (authType.value === "api-key") return "API key"
-  else return "None"
+const props = defineProps<{
+  modelValue: HoppGQLAuth
+  isCollectionProperty?: boolean
+  isRootCollection?: boolean
+  inheritedProperties?: HoppInheritedProperty
+}>()
+
+const emit = defineEmits<{
+  (e: "update:modelValue", value: HoppGQLAuth): void
+}>()
+
+onMounted(() => {
+  if (props.isRootCollection && auth.value.authType === "inherit") {
+    auth.value = {
+      authType: "none",
+      authActive: true,
+    }
+  }
 })
-const authActive = pluckRef(auth, "authActive")
-const basicUsername = pluckRef(auth as Ref<HoppGQLAuthBasic>, "username")
-const basicPassword = pluckRef(auth as Ref<HoppGQLAuthBasic>, "password")
-const bearerToken = pluckRef(auth as Ref<HoppGQLAuthBearer>, "token")
-const oauth2Token = pluckRef(auth as Ref<HoppGQLAuthOAuth2>, "token")
-const apiKey = pluckRef(auth as Ref<HoppGQLAuthAPIKey>, "key")
-const apiValue = pluckRef(auth as Ref<HoppGQLAuthAPIKey>, "value")
-const addTo = pluckRef(auth as Ref<HoppGQLAuthAPIKey>, "addTo")
-if (typeof addTo.value === "undefined") {
-  addTo.value = "Headers"
-  apiKey.value = ""
-  apiValue.value = ""
+
+const auth = useVModel(props, "modelValue", emit)
+
+const selectOAuth2AuthType = () => {
+  const defaultGrantTypeInfo: HoppGQLAuthOAuth2["grantTypeInfo"] = {
+    ...getDefaultAuthCodeOauthFlowParams(),
+    grantType: "AUTHORIZATION_CODE",
+    token: "",
+  }
+
+  // @ts-expect-error - the existing grantTypeInfo might be in the auth object, typescript doesnt know that
+  const existingGrantTypeInfo = auth.value.grantTypeInfo as
+    | HoppGQLAuthOAuth2["grantTypeInfo"]
+    | undefined
+
+  const grantTypeInfo = existingGrantTypeInfo
+    ? existingGrantTypeInfo
+    : defaultGrantTypeInfo
+
+  auth.value = {
+    ...auth.value,
+    authType: "oauth-2",
+    addTo: "HEADERS",
+    grantTypeInfo: grantTypeInfo,
+  }
 }
+
+const selectAPIKeyAuthType = () => {
+  auth.value = {
+    ...auth.value,
+    authType: "api-key",
+    addTo: "HEADERS",
+  } as HoppGQLAuth
+}
+
+const selectAWSSignatureAuthType = () => {
+  const {
+    accessKey = "",
+    secretKey = "",
+    region = "",
+    serviceName = "",
+    addTo = "HEADERS",
+  } = auth.value as HoppGQLAuthAWSSignature
+
+  auth.value = {
+    ...auth.value,
+    authType: "aws-signature",
+    addTo,
+    accessKey,
+    secretKey,
+    region,
+    serviceName,
+  }
+}
+
+const authTypes: AuthType[] = [
+  {
+    key: "inherit",
+    label: "Inherit",
+  },
+  {
+    key: "none",
+    label: "None",
+  },
+  {
+    key: "basic",
+    label: "Basic Auth",
+  },
+  {
+    key: "bearer",
+    label: "Bearer",
+  },
+  {
+    key: "oauth-2",
+    label: "OAuth 2.0",
+    handler: selectOAuth2AuthType,
+  },
+  {
+    key: "api-key",
+    label: "API Key",
+    handler: selectAPIKeyAuthType,
+  },
+  {
+    key: "aws-signature",
+    label: "AWS Signature",
+    handler: selectAWSSignatureAuthType,
+  },
+]
+
+const AUTH_KEY_NAME: Record<HoppGQLAuth["authType"], string> = {
+  basic: "Basic Auth",
+  bearer: "Bearer",
+  "oauth-2": "OAuth 2.0",
+  "api-key": "API key",
+  none: "None",
+  inherit: "Inherit",
+  "aws-signature": "AWS Signature",
+}
+
+const authType = pluckRef(auth, "authType")
+
+const authName = computed(() =>
+  AUTH_KEY_NAME[authType.value] ? AUTH_KEY_NAME[authType.value] : "None"
+)
+
+const getAuthName = (type: HoppGQLAuth["authType"] | undefined) => {
+  if (!type) return "None"
+  return AUTH_KEY_NAME[type] ? AUTH_KEY_NAME[type] : "None"
+}
+
+const authActive = pluckRef(auth, "authActive")
 
 const clearContent = () => {
   auth.value = {
-    authType: "none",
+    authType: "inherit",
     authActive: true,
   }
 }
 
 // Template refs
 const tippyActions = ref<any | null>(null)
-const authTippyActions = ref<any | null>(null)
 </script>

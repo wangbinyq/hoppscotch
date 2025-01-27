@@ -1,10 +1,10 @@
 <template>
   <div>
     <div
-      class="sticky z-10 flex justify-between flex-1 flex-shrink-0 overflow-x-auto border-b top-upperSecondaryStickyFold border-dividerLight bg-primary"
+      class="sticky top-upperPrimaryStickyFold z-10 flex flex-1 flex-shrink-0 justify-between overflow-x-auto border-b border-dividerLight bg-primary"
     >
-      <ButtonSecondary
-        v-if="team === undefined || team.myRole === 'VIEWER'"
+      <HoppButtonSecondary
+        v-if="team === undefined || team.role === 'VIEWER'"
         v-tippy="{ theme: 'tooltip' }"
         disabled
         class="!rounded-none"
@@ -12,7 +12,7 @@
         :title="t('team.no_access')"
         :label="t('action.new')"
       />
-      <ButtonSecondary
+      <HoppButtonSecondary
         v-else
         :icon="IconPlus"
         :label="`${t('action.new')}`"
@@ -20,132 +20,163 @@
         @click="displayModalAdd(true)"
       />
       <div class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
-          to="https://docs.hoppscotch.io/features/environments"
+          to="https://docs.hoppscotch.io/documentation/features/environments"
           blank
           :title="t('app.wiki')"
           :icon="IconHelpCircle"
         />
-        <ButtonSecondary
-          v-if="team !== undefined && team.myRole === 'VIEWER'"
+        <HoppButtonSecondary
+          v-if="team !== undefined && team.role === 'VIEWER'"
           v-tippy="{ theme: 'tooltip' }"
           disabled
-          :icon="IconArchive"
+          :icon="IconImport"
           :title="t('modal.import_export')"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-else
           v-tippy="{ theme: 'tooltip' }"
-          :icon="IconArchive"
+          :icon="IconImport"
           :title="t('modal.import_export')"
           @click="displayModalImportExport(true)"
         />
       </div>
     </div>
-    <div
-      v-if="!loading && teamEnvironments.length === 0 && !adapterError"
-      class="flex flex-col items-center justify-center p-4 text-secondaryLight"
+    <HoppSmartPlaceholder
+      v-if="
+        !loading &&
+        !alphabeticallySortedTeamEnvironments.length &&
+        !adapterError
+      "
+      :src="`/images/states/${colorMode.value}/blockchain.svg`"
+      :alt="`${t('empty.environments')}`"
+      :text="t('empty.environments')"
     >
-      <img
-        :src="`/images/states/${colorMode.value}/blockchain.svg`"
-        loading="lazy"
-        class="inline-flex flex-col object-contain object-center w-16 h-16 my-4"
-        :alt="`${t('empty.environments')}`"
-      />
-      <span class="pb-4 text-center">
-        {{ t("empty.environments") }}
-      </span>
-      <ButtonSecondary
-        v-if="team === undefined || team.myRole === 'VIEWER'"
-        v-tippy="{ theme: 'tooltip' }"
-        disabled
-        filled
-        class="mb-4"
-        :icon="IconPlus"
-        :title="t('team.no_access')"
-        :label="t('action.new')"
-      />
-      <ButtonSecondary
-        v-else
-        :label="`${t('add.new')}`"
-        filled
-        outline
-        class="mb-4"
-        @click="displayModalAdd(true)"
-      />
-    </div>
+      <template #body>
+        <div class="flex flex-col items-center space-y-4">
+          <span class="text-center text-secondaryLight">
+            {{ t("environment.import_or_create") }}
+          </span>
+          <div class="flex flex-col items-stretch gap-4">
+            <HoppButtonPrimary
+              :icon="IconImport"
+              :label="t('import.title')"
+              filled
+              outline
+              :title="isTeamViewer ? t('team.no_access') : ''"
+              :disabled="isTeamViewer"
+              @click="isTeamViewer ? null : displayModalImportExport(true)"
+            />
+            <HoppButtonSecondary
+              :label="`${t('add.new')}`"
+              filled
+              outline
+              :icon="IconPlus"
+              :title="isTeamViewer ? t('team.no_access') : ''"
+              :disabled="isTeamViewer"
+              @click="isTeamViewer ? null : displayModalAdd(true)"
+            />
+          </div>
+        </div>
+      </template>
+    </HoppSmartPlaceholder>
     <div v-else-if="!loading">
       <EnvironmentsTeamsEnvironment
-        v-for="(environment, index) in JSON.parse(
-          JSON.stringify(teamEnvironments)
+        v-for="{ env, index } in JSON.parse(
+          JSON.stringify(alphabeticallySortedTeamEnvironments)
         )"
         :key="`environment-${index}`"
-        :environment="environment"
-        :is-viewer="team?.myRole === 'VIEWER'"
-        @edit-environment="editEnvironment(environment)"
+        :environment="env"
+        :is-viewer="team?.role === 'VIEWER'"
+        @edit-environment="editEnvironment(env)"
+        @show-environment-properties="
+          showEnvironmentProperties(env.environment.id)
+        "
       />
     </div>
     <div v-if="loading" class="flex flex-col items-center justify-center p-4">
-      <SmartSpinner class="my-4" />
+      <HoppSmartSpinner class="my-4" />
       <span class="text-secondaryLight">{{ t("state.loading") }}</span>
     </div>
     <div
       v-if="!loading && adapterError"
       class="flex flex-col items-center py-4"
     >
-      <i class="mb-4 material-icons">help_outline</i>
-      {{ getErrorMessage(adapterError) }}
+      <icon-lucide-help-circle class="svg-icons mb-4" />
+      {{ t(getEnvActionErrorMessage(adapterError)) }}
     </div>
     <EnvironmentsTeamsDetails
       :show="showModalDetails"
       :action="action"
       :editing-environment="editingEnvironment"
-      :editing-team-id="team?.id"
+      :editing-team-id="team?.teamID"
       :editing-variable-name="editingVariableName"
-      :is-viewer="team?.myRole === 'VIEWER'"
+      :is-secret-option-selected="secretOptionSelected"
+      :is-viewer="team?.role === 'VIEWER'"
       @hide-modal="displayModalEdit(false)"
     />
     <EnvironmentsImportExport
-      :show="showModalImportExport"
-      :team-environments="teamEnvironments"
-      :team-id="team?.id"
+      v-if="showModalImportExport"
+      :team-environments="
+        alphabeticallySortedTeamEnvironments.map(({ env }) => env)
+      "
+      :team-id="team?.teamID"
       environment-type="TEAM_ENV"
       @hide-modal="displayModalImportExport(false)"
+    />
+    <EnvironmentsProperties
+      v-if="showEnvironmentsPropertiesModal"
+      v-model="environmentsPropertiesModalActiveTab"
+      :environment-i-d="selectedEnvironmentID!"
+      @hide-modal="showEnvironmentsPropertiesModal = false"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue"
+import { computed, ref } from "vue"
 import { GQLError } from "~/helpers/backend/GQLClient"
 import { TeamEnvironment } from "~/helpers/teams/TeamEnvironment"
 import { useI18n } from "~/composables/i18n"
 import { useColorMode } from "~/composables/theming"
 import IconPlus from "~icons/lucide/plus"
-import IconArchive from "~icons/lucide/archive"
 import IconHelpCircle from "~icons/lucide/help-circle"
-import { Team } from "~/helpers/backend/graphql"
+import IconImport from "~icons/lucide/folder-down"
 import { defineActionHandler } from "~/helpers/actions"
+import { TeamWorkspace } from "~/services/workspace.service"
+import { sortTeamEnvironmentsAlphabetically } from "~/helpers/utils/sortEnvironmentsAlphabetically"
+import { getEnvActionErrorMessage } from "~/helpers/error-messages"
 
 const t = useI18n()
 
 const colorMode = useColorMode()
 
-type SelectedTeam = Team | undefined
-
 const props = defineProps<{
-  team: SelectedTeam
+  team: TeamWorkspace | undefined
   teamEnvironments: TeamEnvironment[]
   adapterError: GQLError<string> | null
   loading: boolean
 }>()
+
+// Sort environments alphabetically by default
+
+const alphabeticallySortedTeamEnvironments = computed(() =>
+  sortTeamEnvironmentsAlphabetically(props.teamEnvironments, "asc")
+)
 
 const showModalImportExport = ref(false)
 const showModalDetails = ref(false)
 const action = ref<"new" | "edit">("edit")
 const editingEnvironment = ref<TeamEnvironment | null>(null)
 const editingVariableName = ref("")
+const secretOptionSelected = ref(false)
+
+const showEnvironmentsPropertiesModal = ref(false)
+const environmentsPropertiesModalActiveTab = ref("details")
+const selectedEnvironmentID = ref<string | null>(null)
+
+const isTeamViewer = computed(() => props.team?.role === "VIEWER")
 
 const displayModalAdd = (shouldDisplay: boolean) => {
   action.value = "new"
@@ -167,29 +198,27 @@ const editEnvironment = (environment: TeamEnvironment | null) => {
 }
 const resetSelectedData = () => {
   editingEnvironment.value = null
+  editingVariableName.value = ""
+  secretOptionSelected.value = false
 }
 
-const getErrorMessage = (err: GQLError<string>) => {
-  if (err.type === "network_error") {
-    return t("error.network_error")
-  } else {
-    switch (err.error) {
-      case "team_environment/not_found":
-        return t("team_environment.not_found")
-      default:
-        return t("error.something_went_wrong")
-    }
-  }
+const showEnvironmentProperties = (environmentID: string) => {
+  showEnvironmentsPropertiesModal.value = true
+  selectedEnvironmentID.value = environmentID
 }
 
 defineActionHandler(
   "modals.team.environment.edit",
-  ({ envName, variableName }) => {
-    editingVariableName.value = variableName
-    const teamEnvToEdit = props.teamEnvironments.find(
-      (environment) => environment.environment.name === envName
+  ({ envName, variableName, isSecret }) => {
+    if (variableName) editingVariableName.value = variableName
+    const teamEnvToEdit = alphabeticallySortedTeamEnvironments.value.find(
+      ({ env }) => env.environment.name === envName
     )
-    if (teamEnvToEdit) editEnvironment(teamEnvToEdit)
+    if (teamEnvToEdit) {
+      const { env } = teamEnvToEdit
+      editEnvironment(env)
+      secretOptionSelected.value = isSecret ?? false
+    }
   }
 )
 </script>

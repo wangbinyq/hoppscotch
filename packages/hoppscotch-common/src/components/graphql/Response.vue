@@ -1,46 +1,92 @@
 <template>
-  <div class="flex flex-col flex-1 overflow-auto whitespace-nowrap">
+  <div class="flex flex-1 flex-col overflow-auto whitespace-nowrap">
     <div
-      v-if="responseString === 'loading'"
-      class="flex flex-col items-center justify-center p-4 text-secondaryLight"
+      v-if="
+        response && response.length === 1 && response[0].type === 'response'
+      "
+      class="flex flex-1 flex-col"
     >
-      <SmartSpinner class="my-4" />
-      <span class="text-secondaryLight">{{ t("state.loading") }}</span>
-    </div>
-    <div v-else-if="responseString" class="flex flex-col flex-1">
       <div
-        class="sticky top-0 z-10 flex items-center justify-between flex-shrink-0 pl-4 overflow-x-auto border-b bg-primary border-dividerLight"
+        class="sticky top-0 z-10 flex flex-shrink-0 items-center justify-between overflow-x-auto border-b border-dividerLight bg-primary pl-4"
       >
-        <label class="font-semibold truncate text-secondaryLight">
+        <label class="truncate font-semibold text-secondaryLight">
           {{ t("response.title") }}
         </label>
         <div class="flex items-center">
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip' }"
             :title="t('state.linewrap')"
-            :class="{ '!text-accent': linewrapEnabled }"
+            :class="{ '!text-accent': WRAP_LINES }"
             :icon="IconWrapText"
-            @click.prevent="linewrapEnabled = !linewrapEnabled"
+            @click.prevent="
+              toggleNestedSetting('WRAP_LINES', 'graphqlResponseBody')
+            "
           />
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip', allowHTML: true }"
             :title="`${t(
               'action.download_file'
             )} <kbd>${getSpecialKey()}</kbd><kbd>J</kbd>`"
-            :icon="downloadResponseIcon"
+            :icon="downloadIcon"
             @click="downloadResponse"
           />
-          <ButtonSecondary
+          <HoppButtonSecondary
             v-tippy="{ theme: 'tooltip', allowHTML: true }"
             :title="`${t(
               'action.copy'
             )} <kbd>${getSpecialKey()}</kbd><kbd>.</kbd>`"
-            :icon="copyResponseIcon"
+            :icon="copyIcon"
             @click="copyResponse"
           />
+          <tippy
+            interactive
+            trigger="click"
+            theme="popover"
+            :on-shown="() => copyInterfaceTippyActions.focus()"
+          >
+            <HoppButtonSecondary
+              v-tippy="{ theme: 'tooltip' }"
+              :title="t('action.more')"
+              :icon="IconMore"
+            />
+            <template #content="{ hide }">
+              <div
+                ref="copyInterfaceTippyActions"
+                class="flex flex-col focus:outline-none"
+                tabindex="0"
+                @keyup.escape="hide()"
+              >
+                <HoppSmartItem
+                  :label="t('response.generate_data_schema')"
+                  :icon="IconNetwork"
+                  @click="
+                    () => {
+                      invokeAction('response.schema.toggle')
+                      hide()
+                    }
+                  "
+                />
+              </div>
+            </template>
+          </tippy>
         </div>
       </div>
-      <div ref="schemaEditor" class="flex flex-col flex-1"></div>
+      <div class="h-full relative overflow-auto flex flex-col flex-1">
+        <div ref="schemaEditor" class="absolute inset-0 h-full"></div>
+      </div>
+    </div>
+    <component
+      :is="response[0].error.component"
+      v-else-if="
+        response && response[0].type === 'error' && response[0].error.component
+      "
+      class="flex-1"
+    />
+    <div
+      v-else-if="response && response?.length > 1"
+      class="flex flex-1 flex-col"
+    >
+      <GraphqlSubscriptionLog :log="response" />
     </div>
     <AppShortcutsPrompt v-else class="p-4" />
   </div>
@@ -48,28 +94,50 @@
 
 <script setup lang="ts">
 import IconWrapText from "~icons/lucide/wrap-text"
-import IconDownload from "~icons/lucide/download"
-import IconCheck from "~icons/lucide/check"
-import IconCopy from "~icons/lucide/copy"
-import { reactive, ref } from "vue"
-import { refAutoReset } from "@vueuse/core"
+import IconNetwork from "~icons/lucide/network"
+import IconMore from "~icons/lucide/more-horizontal"
+import { computed, reactive, ref } from "vue"
 import { useCodemirror } from "@composables/codemirror"
-import { copyToClipboard } from "~/helpers/utils/clipboard"
-import { useReadonlyStream } from "@composables/stream"
 import { useI18n } from "@composables/i18n"
-import { useToast } from "@composables/toast"
-import { gqlResponse$ } from "~/newstore/GQLSession"
-import { defineActionHandler } from "~/helpers/actions"
+import { defineActionHandler, invokeAction } from "~/helpers/actions"
 import { getPlatformSpecialKey as getSpecialKey } from "~/helpers/platformutils"
+import { GQLResponseEvent } from "~/helpers/graphql/connection"
+import { useNestedSetting } from "~/composables/settings"
+import { toggleNestedSetting } from "~/newstore/settings"
+import {
+  useCopyResponse,
+  useDownloadResponse,
+} from "~/composables/lens-actions"
 
 const t = useI18n()
 
-const toast = useToast()
+const props = withDefaults(
+  defineProps<{
+    response: GQLResponseEvent[] | null
+  }>(),
+  {
+    response: null,
+  }
+)
 
-const responseString = useReadonlyStream(gqlResponse$, "")
+const responseString = computed(() => {
+  const response = props.response
+  if (response && response[0].type === "error") {
+    return ""
+  } else if (
+    response &&
+    response.length === 1 &&
+    response[0].type === "response" &&
+    response[0].data
+  ) {
+    return JSON.stringify(JSON.parse(response[0].data), null, 2)
+  }
+  return ""
+})
 
 const schemaEditor = ref<any | null>(null)
-const linewrapEnabled = ref(true)
+const WRAP_LINES = useNestedSetting("WRAP_LINES", "graphqlResponseBody")
+const copyInterfaceTippyActions = ref<any | null>(null)
 
 useCodemirror(
   schemaEditor,
@@ -78,7 +146,7 @@ useCodemirror(
     extendedEditorConfig: {
       mode: "application/ld+json",
       readOnly: true,
-      lineWrapping: linewrapEnabled,
+      lineWrapping: WRAP_LINES,
     },
     linter: null,
     completer: null,
@@ -86,37 +154,21 @@ useCodemirror(
   })
 )
 
-const downloadResponseIcon = refAutoReset<
-  typeof IconDownload | typeof IconCheck
->(IconDownload, 1000)
-const copyResponseIcon = refAutoReset<typeof IconCopy | typeof IconCheck>(
-  IconCopy,
-  1000
+const { copyIcon, copyResponse } = useCopyResponse(responseString)
+const { downloadIcon, downloadResponse } = useDownloadResponse(
+  "application/json",
+  responseString,
+  t("filename.graphql_response")
 )
 
-const copyResponse = () => {
-  copyToClipboard(responseString.value!)
-  copyResponseIcon.value = IconCheck
-  toast.success(`${t("state.copied_to_clipboard")}`)
-}
-
-const downloadResponse = () => {
-  const dataToWrite = responseString.value
-  const file = new Blob([dataToWrite!], { type: "application/json" })
-  const a = document.createElement("a")
-  const url = URL.createObjectURL(file)
-  a.href = url
-  a.download = `${url.split("/").pop()!.split("#")[0].split("?")[0]}`
-  document.body.appendChild(a)
-  a.click()
-  downloadResponseIcon.value = IconCheck
-  toast.success(`${t("state.download_started")}`)
-  setTimeout(() => {
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }, 1000)
-}
-
-defineActionHandler("response.file.download", () => downloadResponse())
-defineActionHandler("response.copy", () => copyResponse())
+defineActionHandler(
+  "response.file.download",
+  () => downloadResponse(),
+  computed(() => !!props.response && props.response.length > 0)
+)
+defineActionHandler(
+  "response.copy",
+  () => copyResponse(),
+  computed(() => !!props.response && props.response.length > 0)
+)
 </script>

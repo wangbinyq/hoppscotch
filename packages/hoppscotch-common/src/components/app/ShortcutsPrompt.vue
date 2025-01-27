@@ -1,17 +1,17 @@
 <template>
   <div class="flex flex-col items-center justify-center text-secondaryLight">
-    <div class="flex pb-4 my-4 space-x-2">
+    <div class="mb-4 flex space-x-2">
       <div class="flex flex-col items-end space-y-4 text-right">
-        <span class="flex items-center flex-1">
+        <span class="flex flex-1 items-center">
           {{ t("shortcut.request.send_request") }}
         </span>
-        <span class="flex items-center flex-1">
+        <span class="flex flex-1 items-center">
           {{ t("shortcut.general.show_all") }}
         </span>
-        <span class="flex items-center flex-1">
+        <span class="flex flex-1 items-center">
           {{ t("shortcut.general.command_menu") }}
         </span>
-        <span class="flex items-center flex-1">
+        <span class="flex flex-1 items-center">
           {{ t("shortcut.general.help_menu") }}
         </span>
       </div>
@@ -22,19 +22,20 @@
         </div>
         <div class="flex">
           <kbd class="shortcut-key">{{ getSpecialKey() }}</kbd>
-          <kbd class="shortcut-key">K</kbd>
+          <kbd class="shortcut-key">/</kbd>
         </div>
         <div class="flex">
-          <kbd class="shortcut-key">/</kbd>
+          <kbd class="shortcut-key">{{ getSpecialKey() }}</kbd>
+          <kbd class="shortcut-key">K</kbd>
         </div>
         <div class="flex">
           <kbd class="shortcut-key">?</kbd>
         </div>
       </div>
     </div>
-    <ButtonSecondary
+    <HoppButtonSecondary
       :label="`${t('app.documentation')}`"
-      to="https://docs.hoppscotch.io/features/response"
+      to="https://docs.hoppscotch.io/documentation/features/rest-api-testing#response"
       :icon="IconExternalLink"
       blank
       outline

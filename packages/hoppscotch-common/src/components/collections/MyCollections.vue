@@ -1,44 +1,49 @@
 <template>
-  <div class="flex flex-col flex-1">
+  <div class="flex flex-1 flex-col">
     <div
-      class="sticky z-10 flex justify-between flex-1 border-b bg-primary border-dividerLight"
+      class="sticky z-10 flex flex-1 justify-between border-b border-dividerLight bg-primary"
       :style="
         saveRequest
           ? 'top: calc(var(--upper-primary-sticky-fold) - var(--line-height-body))'
           : 'top: var(--upper-primary-sticky-fold)'
       "
     >
-      <ButtonSecondary
+      <HoppButtonSecondary
         :icon="IconPlus"
         :label="t('action.new')"
         class="!rounded-none"
         @click="emit('display-modal-add')"
       />
       <span class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-tippy="{ theme: 'tooltip' }"
-          to="https://docs.hoppscotch.io/features/collections"
+          to="https://docs.hoppscotch.io/documentation/features/collections"
           blank
           :title="t('app.wiki')"
           :icon="IconHelpCircle"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           v-if="!saveRequest"
           v-tippy="{ theme: 'tooltip' }"
-          :icon="IconArchive"
+          :icon="IconImport"
           :title="t('modal.import_export')"
           @click="emit('display-modal-import-export')"
         />
       </span>
     </div>
-    <div class="flex flex-col flex-1">
-      <SmartTree :adapter="myAdapter">
-        <template #content="{ node, toggleChildren, isOpen }">
+    <div class="flex flex-1 flex-col">
+      <HoppSmartTree :adapter="myAdapter">
+        <template
+          #content="{ node, toggleChildren, isOpen, highlightChildren }"
+        >
           <CollectionsCollection
             v-if="node.data.type === 'collections'"
+            :id="node.id"
+            :parent-i-d="node.data.data.parentIndex"
             :data="node.data.data.data"
             :collections-type="collectionsType.type"
             :is-open="isOpen"
+            :is-last-item="node.data.isLastItem"
             :is-selected="
               isSelected({
                 collectionIndex: parseInt(node.id),
@@ -59,9 +64,29 @@
                   folder: node.data.data.data,
                 })
             "
+            @run-collection="
+              emit('run-collection', {
+                collectionIndex: node.id,
+                collection: node.data.data.data,
+              })
+            "
             @edit-collection="
               node.data.type === 'collections' &&
                 emit('edit-collection', {
+                  collectionIndex: node.id,
+                  collection: node.data.data.data,
+                })
+            "
+            @duplicate-collection="
+              node.data.type === 'collections' &&
+                emit('duplicate-collection', {
+                  pathOrID: node.id,
+                  collectionSyncID: node.data.data.data.id,
+                })
+            "
+            @edit-properties="
+              node.data.type === 'collections' &&
+                emit('edit-properties', {
                   collectionIndex: node.id,
                   collection: node.data.data.data,
                 })
@@ -72,6 +97,23 @@
             "
             @remove-collection="emit('remove-collection', node.id)"
             @drop-event="dropEvent($event, node.id)"
+            @drag-event="dragEvent($event, node.id)"
+            @update-collection-order="
+              updateCollectionOrder($event, {
+                destinationCollectionIndex: node.id,
+                destinationCollectionParentIndex: node.data.data.parentIndex,
+              })
+            "
+            @update-last-collection-order="
+              updateCollectionOrder($event, {
+                destinationCollectionIndex: null,
+                destinationCollectionParentIndex: node.data.data.parentIndex,
+              })
+            "
+            @dragging="
+              (isDraging: boolean) =>
+                highlightChildren(isDraging ? node.id : null)
+            "
             @toggle-children="
               () => {
                 toggleChildren(),
@@ -85,15 +127,24 @@
           />
           <CollectionsCollection
             v-if="node.data.type === 'folders'"
+            :id="node.id"
+            :parent-i-d="node.data.data.parentIndex"
             :data="node.data.data.data"
             :collections-type="collectionsType.type"
             :is-open="isOpen"
+            :is-last-item="node.data.isLastItem"
             :is-selected="
               isSelected({
                 folderPath: node.id,
               })
             "
             folder-type="folder"
+            @run-collection="
+              emit('run-collection', {
+                collectionIndex: node.id,
+                collection: node.data.data.data,
+              })
+            "
             @add-request="
               node.data.type === 'folders' &&
                 emit('add-request', {
@@ -115,12 +166,43 @@
                   folder: node.data.data.data,
                 })
             "
+            @duplicate-collection="
+              node.data.type === 'folders' &&
+                emit('duplicate-collection', {
+                  pathOrID: node.id,
+                  collectionSyncID: node.data.data.data.id,
+                })
+            "
+            @edit-properties="
+              node.data.type === 'folders' &&
+                emit('edit-properties', {
+                  collectionIndex: node.id,
+                  collection: node.data.data.data,
+                })
+            "
             @export-data="
               node.data.type === 'folders' &&
                 emit('export-data', node.data.data.data)
             "
             @remove-collection="emit('remove-folder', node.id)"
             @drop-event="dropEvent($event, node.id)"
+            @drag-event="dragEvent($event, node.id)"
+            @update-collection-order="
+              updateCollectionOrder($event, {
+                destinationCollectionIndex: node.id,
+                destinationCollectionParentIndex: node.data.data.parentIndex,
+              })
+            "
+            @update-last-collection-order="
+              updateCollectionOrder($event, {
+                destinationCollectionIndex: null,
+                destinationCollectionParentIndex: node.data.data.parentIndex,
+              })
+            "
+            @dragging="
+              (isDraging: boolean) =>
+                highlightChildren(isDraging ? node.id : null)
+            "
             @toggle-children="
               () => {
                 toggleChildren(),
@@ -135,8 +217,11 @@
           <CollectionsRequest
             v-if="node.data.type === 'requests'"
             :request="node.data.data.data"
+            :request-i-d="node.id"
+            :parent-i-d="node.data.data.parentIndex"
             :collections-type="collectionsType.type"
             :save-request="saveRequest"
+            :is-last-item="node.data.isLastItem"
             :is-active="
               isActiveRequest(
                 node.data.data.parentIndex,
@@ -157,6 +242,15 @@
                   request: node.data.data.data,
                 })
             "
+            @edit-response="
+              emit('edit-response', {
+                folderPath: node.data.data.parentIndex,
+                requestIndex: pathToIndex(node.id),
+                request: node.data.data.data,
+                responseName: $event.responseName,
+                responseID: $event.responseID,
+              })
+            "
             @duplicate-request="
               node.data.type === 'requests' &&
                 emit('duplicate-request', {
@@ -164,12 +258,30 @@
                   request: node.data.data.data,
                 })
             "
+            @duplicate-response="
+              emit('duplicate-response', {
+                folderPath: node.data.data.parentIndex,
+                requestIndex: pathToIndex(node.id),
+                request: node.data.data.data,
+                responseName: $event.responseName,
+                responseID: $event.responseID,
+              })
+            "
             @remove-request="
               node.data.type === 'requests' &&
                 emit('remove-request', {
                   folderPath: node.data.data.parentIndex,
                   requestIndex: pathToIndex(node.id),
                 })
+            "
+            @remove-response="
+              emit('remove-response', {
+                folderPath: node.data.data.parentIndex,
+                requestIndex: pathToIndex(node.id),
+                request: node.data.data.data,
+                responseName: $event.responseName,
+                responseID: $event.responseID,
+              })
             "
             @select-request="
               node.data.type === 'requests' &&
@@ -179,125 +291,150 @@
                   requestIndex: pathToIndex(node.id),
                 })
             "
+            @select-response="
+              emit('select-response', {
+                responseName: $event.responseName,
+                responseID: $event.responseID,
+                request: node.data.data.data,
+                folderPath: node.data.data.parentIndex,
+                requestIndex: pathToIndex(node.id),
+              })
+            "
+            @share-request="
+              node.data.type === 'requests' &&
+                emit('share-request', {
+                  request: node.data.data.data,
+                })
+            "
             @drag-request="
               dragRequest($event, {
                 folderPath: node.data.data.parentIndex,
-                requestIndex: pathToIndex(node.id),
+                requestIndex: node.id,
+              })
+            "
+            @update-request-order="
+              updateRequestOrder($event, {
+                folderPath: node.data.data.parentIndex,
+                requestIndex: node.id,
+              })
+            "
+            @update-last-request-order="
+              updateRequestOrder($event, {
+                folderPath: node.data.data.parentIndex,
+                requestIndex: null,
               })
             "
           />
         </template>
         <template #emptyNode="{ node }">
-          <div
+          <HoppSmartPlaceholder
             v-if="filterText.length !== 0 && filteredCollections.length === 0"
-            class="flex flex-col items-center justify-center p-4 text-secondaryLight"
+            :text="`${t('state.nothing_found')} ‟${filterText}”`"
           >
-            <icon-lucide-search class="pb-2 opacity-75 svg-icons" />
-            <span class="my-2 text-center">
-              {{ t("state.nothing_found") }} "{{ filterText }}"
-            </span>
-          </div>
-          <div v-else-if="node === null">
-            <div
-              class="flex flex-col items-center justify-center p-4 text-secondaryLight"
-            >
-              <img
-                :src="`/images/states/${colorMode.value}/pack.svg`"
-                loading="lazy"
-                class="inline-flex flex-col object-contain object-center w-16 h-16 mb-4"
-                :alt="`${t('empty.collections')}`"
-              />
-              <span class="pb-4 text-center">
-                {{ t("empty.collections") }}
-              </span>
-              <ButtonSecondary
+            <template #icon>
+              <icon-lucide-search class="svg-icons opacity-75" />
+            </template>
+          </HoppSmartPlaceholder>
+          <HoppSmartPlaceholder
+            v-else-if="node === null"
+            :src="`/images/states/${colorMode.value}/pack.svg`"
+            :alt="`${t('empty.collections')}`"
+            :text="t('empty.collections')"
+          >
+            <template #body>
+              <div class="flex flex-col items-center space-y-4">
+                <span class="text-center text-secondaryLight">
+                  {{ t("collection.import_or_create") }}
+                </span>
+                <div class="flex flex-col items-stretch gap-4">
+                  <HoppButtonPrimary
+                    :icon="IconImport"
+                    :label="t('import.title')"
+                    filled
+                    outline
+                    @click="emit('display-modal-import-export')"
+                  />
+                  <HoppButtonSecondary
+                    :icon="IconPlus"
+                    :label="t('add.new')"
+                    filled
+                    outline
+                    @click="emit('display-modal-add')"
+                  />
+                </div>
+              </div>
+            </template>
+          </HoppSmartPlaceholder>
+          <HoppSmartPlaceholder
+            v-else-if="node.data.type === 'collections'"
+            :src="`/images/states/${colorMode.value}/pack.svg`"
+            :alt="`${t('empty.collections')}`"
+            :text="t('empty.collections')"
+          >
+            <template #body>
+              <HoppButtonSecondary
                 :label="t('add.new')"
                 filled
                 outline
-                @click="emit('display-modal-add')"
+                @click="
+                  node.data.type === 'collections' &&
+                    emit('add-folder', {
+                      path: node.id,
+                      folder: node.data.data.data,
+                    })
+                "
               />
-            </div>
-          </div>
-          <div
-            v-else-if="node.data.type === 'collections'"
-            class="flex flex-col items-center justify-center p-4 text-secondaryLight"
-          >
-            <img
-              :src="`/images/states/${colorMode.value}/pack.svg`"
-              loading="lazy"
-              class="inline-flex flex-col object-contain object-center w-16 h-16 mb-4"
-              :alt="`${t('empty.collection')}`"
-            />
-            <span class="pb-4 text-center">
-              {{ t("empty.collection") }}
-            </span>
-            <ButtonSecondary
-              :label="t('add.new')"
-              filled
-              outline
-              @click="
-                node.data.type === 'collections' &&
-                  emit('add-folder', {
-                    path: node.id,
-                    folder: node.data.data.data,
-                  })
-              "
-            />
-          </div>
-          <div
+            </template>
+          </HoppSmartPlaceholder>
+          <HoppSmartPlaceholder
             v-else-if="node.data.type === 'folders'"
-            class="flex flex-col items-center justify-center p-4 text-secondaryLight"
-          >
-            <img
-              :src="`/images/states/${colorMode.value}/pack.svg`"
-              loading="lazy"
-              class="inline-flex flex-col object-contain object-center w-16 h-16 mb-4"
-              :alt="`${t('empty.folder')}`"
-            />
-            <span class="text-center">
-              {{ t("empty.folder") }}
-            </span>
-          </div>
+            :src="`/images/states/${colorMode.value}/pack.svg`"
+            :alt="`${t('empty.folder')}`"
+            :text="t('empty.folder')"
+          />
         </template>
-      </SmartTree>
+      </HoppSmartTree>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import IconArchive from "~icons/lucide/archive"
 import IconPlus from "~icons/lucide/plus"
 import IconHelpCircle from "~icons/lucide/help-circle"
+import IconImport from "~icons/lucide/folder-down"
 import { HoppCollection, HoppRESTRequest } from "@hoppscotch/data"
 import { computed, PropType, Ref, toRef } from "vue"
 import { GetMyTeamsQuery } from "~/helpers/backend/graphql"
-import { ChildrenResult, SmartTreeAdapter } from "~/helpers/treeAdapter"
+import { ChildrenResult, SmartTreeAdapter } from "@hoppscotch/ui/helpers"
 import { useI18n } from "@composables/i18n"
 import { useColorMode } from "@composables/theming"
-import { useReadonlyStream } from "~/composables/stream"
-import { restSaveContext$ } from "~/newstore/RESTSession"
 import { pipe } from "fp-ts/function"
 import * as O from "fp-ts/Option"
 import { Picked } from "~/helpers/types/HoppPicked.js"
+import { useService } from "dioc/vue"
+import { RESTTabService } from "~/services/tab/rest"
 
 export type Collection = {
   type: "collections"
+  isLastItem: boolean
   data: {
     parentIndex: null
-    data: HoppCollection<HoppRESTRequest>
+    data: HoppCollection
   }
 }
 
 type Folder = {
   type: "folders"
+  isLastItem: boolean
   data: {
     parentIndex: string
-    data: HoppCollection<HoppRESTRequest>
+    data: HoppCollection
   }
 }
 
 type Requests = {
   type: "requests"
+  isLastItem: boolean
   data: {
     parentIndex: string
     data: HoppRESTRequest
@@ -318,7 +455,7 @@ type CollectionType =
 
 const props = defineProps({
   filteredCollections: {
-    type: Array as PropType<HoppCollection<HoppRESTRequest>[]>,
+    type: Array as PropType<HoppCollection[]>,
     default: () => [],
     required: true,
   },
@@ -344,34 +481,63 @@ const props = defineProps({
   },
 })
 
+type ResponsePayload = {
+  folderPath: string
+  requestIndex: string
+  request: HoppRESTRequest
+  responseName: string
+  responseID: string
+}
+
 const emit = defineEmits<{
   (event: "display-modal-add"): void
   (
     event: "add-request",
     payload: {
       path: string
-      folder: HoppCollection<HoppRESTRequest>
+      folder: HoppCollection
     }
   ): void
   (
     event: "add-folder",
     payload: {
       path: string
-      folder: HoppCollection<HoppRESTRequest>
+      folder: HoppCollection
+    }
+  ): void
+  (
+    event: "run-collection",
+    payload: {
+      collectionIndex: string
+      collection: HoppCollection
     }
   ): void
   (
     event: "edit-collection",
     payload: {
       collectionIndex: string
-      collection: HoppCollection<HoppRESTRequest>
+      collection: HoppCollection
     }
   ): void
   (
     event: "edit-folder",
     payload: {
       folderPath: string
-      folder: HoppCollection<HoppRESTRequest>
+      folder: HoppCollection
+    }
+  ): void
+  (
+    event: "duplicate-collection",
+    payload: {
+      pathOrID: string
+      collectionSyncID?: string
+    }
+  ): void
+  (
+    event: "edit-properties",
+    payload: {
+      collectionIndex: string
+      collection: HoppCollection
     }
   ): void
   (
@@ -382,6 +548,7 @@ const emit = defineEmits<{
       request: HoppRESTRequest
     }
   ): void
+  (event: "edit-response", payload: ResponsePayload): void
   (
     event: "duplicate-request",
     payload: {
@@ -389,7 +556,8 @@ const emit = defineEmits<{
       request: HoppRESTRequest
     }
   ): void
-  (event: "export-data", payload: HoppCollection<HoppRESTRequest>): void
+  (event: "duplicate-response", payload: ResponsePayload): void
+  (event: "export-data", payload: HoppCollection): void
   (event: "remove-collection", payload: string): void
   (event: "remove-folder", payload: string): void
   (
@@ -399,6 +567,7 @@ const emit = defineEmits<{
       requestIndex: string
     }
   ): void
+  (event: "remove-response", payload: ResponsePayload): void
   (
     event: "select-request",
     payload: {
@@ -409,76 +578,103 @@ const emit = defineEmits<{
     }
   ): void
   (
+    event: "share-request",
+    payload: {
+      request: HoppRESTRequest
+    }
+  ): void
+  (
     event: "drop-request",
     payload: {
       folderPath: string
       requestIndex: string
-      collectionIndex: string
+      destinationCollectionIndex: string
+    }
+  ): void
+  (
+    event: "drop-collection",
+    payload: {
+      collectionIndexDragged: string
+      destinationCollectionIndex: string
+    }
+  ): void
+  (
+    event: "update-request-order",
+    payload: {
+      dragedRequestIndex: string
+      destinationRequestIndex: string | null
+      destinationCollectionIndex: string
+    }
+  ): void
+  (
+    event: "update-collection-order",
+    payload: {
+      dragedCollectionIndex: string
+      destinationCollection: {
+        destinationCollectionIndex: string | null
+        destinationCollectionParentIndex: string | null
+      }
     }
   ): void
   (event: "select", payload: Picked | null): void
   (event: "display-modal-import-export"): void
+  (event: "select-response", payload: ResponsePayload): void
 }>()
 
 const refFilterCollection = toRef(props, "filteredCollections")
 
-const pathToIndex = computed(() => {
-  return (path: string) => {
-    const pathArr = path.split("/")
-    return pathArr[pathArr.length - 1]
-  }
-})
+const pathToIndex = (path: string) => {
+  const pathArr = path.split("/")
+  return pathArr[pathArr.length - 1]
+}
 
-const isSelected = computed(() => {
-  return ({
-    collectionIndex,
-    folderPath,
-    requestIndex,
-  }: {
-    collectionIndex?: number | undefined
-    folderPath?: string | undefined
-    requestIndex?: number | undefined
-  }) => {
-    if (collectionIndex !== undefined) {
-      return (
-        props.picked &&
-        props.picked.pickedType === "my-collection" &&
-        props.picked.collectionIndex === collectionIndex
-      )
-    } else if (requestIndex !== undefined && folderPath !== undefined) {
-      return (
-        props.picked &&
-        props.picked.pickedType === "my-request" &&
-        props.picked.folderPath === folderPath &&
-        props.picked.requestIndex === requestIndex
-      )
-    } else {
-      return (
-        props.picked &&
-        props.picked.pickedType === "my-folder" &&
-        props.picked.folderPath === folderPath
-      )
-    }
-  }
-})
-
-const active = useReadonlyStream(restSaveContext$, null)
-
-const isActiveRequest = computed(() => {
-  return (folderPath: string, requestIndex: number) => {
-    return pipe(
-      active.value,
-      O.fromNullable,
-      O.filter(
-        (active) =>
-          active.originLocation === "user-collection" &&
-          active.folderPath === folderPath &&
-          active.requestIndex === requestIndex
-      ),
-      O.isSome
+const isSelected = ({
+  collectionIndex,
+  folderPath,
+  requestIndex,
+}: {
+  collectionIndex?: number | undefined
+  folderPath?: string | undefined
+  requestIndex?: number | undefined
+}) => {
+  if (collectionIndex !== undefined) {
+    return (
+      props.picked &&
+      props.picked.pickedType === "my-collection" &&
+      props.picked.collectionIndex === collectionIndex
+    )
+  } else if (requestIndex !== undefined && folderPath !== undefined) {
+    return (
+      props.picked &&
+      props.picked.pickedType === "my-request" &&
+      props.picked.folderPath === folderPath &&
+      props.picked.requestIndex === requestIndex
     )
   }
-})
+  return (
+    props.picked &&
+    props.picked.pickedType === "my-folder" &&
+    props.picked.folderPath === folderPath
+  )
+}
+
+const tabs = useService(RESTTabService)
+const active = computed(() => tabs.currentActiveTab.value.document.saveContext)
+
+const isActiveRequest = (folderPath: string, requestIndex: number) => {
+  return pipe(
+    active.value,
+    O.fromNullable,
+    O.filter(
+      (active) =>
+        active.originLocation === "user-collection" &&
+        active.folderPath === folderPath &&
+        active.requestIndex === requestIndex &&
+        active.exampleID === undefined
+    ),
+    O.isSome
+  )
+}
 
 const selectRequest = (data: {
   request: HoppRESTRequest
@@ -486,6 +682,7 @@ const selectRequest = (data: {
   requestIndex: string
 }) => {
   const { request, folderPath, requestIndex } = data
+
   if (props.saveRequest) {
     emit("select", {
       pickedType: "my-request",
@@ -497,9 +694,13 @@ const selectRequest = (data: {
       request,
       folderPath,
       requestIndex,
-      isActive: isActiveRequest.value(folderPath, parseInt(requestIndex)),
+      isActive: isActiveRequest(folderPath, parseInt(requestIndex)),
     })
   }
+}
+
+const dragEvent = (dataTransfer: DataTransfer, collectionIndex: string) => {
+  dataTransfer.setData("collectionIndex", collectionIndex)
 }
 
 const dragRequest = (
@@ -514,23 +715,69 @@ const dragRequest = (
   dataTransfer.setData("requestIndex", requestIndex)
 }
 
-const dropEvent = (dataTransfer: DataTransfer, collectionIndex: string) => {
+const dropEvent = (
+  dataTransfer: DataTransfer,
+  destinationCollectionIndex: string
+) => {
   const folderPath = dataTransfer.getData("folderPath")
   const requestIndex = dataTransfer.getData("requestIndex")
-  emit("drop-request", {
+  const collectionIndexDragged = dataTransfer.getData("collectionIndex")
+
+  if (folderPath && requestIndex) {
+    emit("drop-request", {
+      folderPath,
+      requestIndex,
+      destinationCollectionIndex,
+    })
+  } else {
+    emit("drop-collection", {
+      collectionIndexDragged,
+      destinationCollectionIndex,
+    })
+  }
+}
+
+const updateRequestOrder = (
+  dataTransfer: DataTransfer,
+  {
     folderPath,
     requestIndex,
-    collectionIndex,
+  }: { folderPath: string | null; requestIndex: string | null }
+) => {
+  if (!folderPath) return
+  const dragedRequestIndex = dataTransfer.getData("requestIndex")
+  const destinationRequestIndex = requestIndex
+  const destinationCollectionIndex = folderPath
+
+  emit("update-request-order", {
+    dragedRequestIndex,
+    destinationRequestIndex,
+    destinationCollectionIndex,
+  })
+}
+
+const updateCollectionOrder = (
+  dataTransfer: DataTransfer,
+  destinationCollection: {
+    destinationCollectionIndex: string | null
+    destinationCollectionParentIndex: string | null
+  }
+) => {
+  const dragedCollectionIndex = dataTransfer.getData("collectionIndex")
+
+  emit("update-collection-order", {
+    dragedCollectionIndex,
+    destinationCollection,
   })
 }
 
 type MyCollectionNode = Collection | Folder | Requests
 
 class MyCollectionsAdapter implements SmartTreeAdapter<MyCollectionNode> {
-  constructor(public data: Ref<HoppCollection<HoppRESTRequest>[]>) {}
+  constructor(public data: Ref<HoppCollection[]>) {}
 
   navigateToFolderWithIndexPath(
-    collections: HoppCollection<HoppRESTRequest>[],
+    collections: HoppCollection[],
     indexPaths: number[]
   ) {
     if (indexPaths.length === 0) return null
@@ -538,7 +785,7 @@ class MyCollectionsAdapter implements SmartTreeAdapter<MyCollectionNode> {
     let target = collections[indexPaths.shift() as number]
 
     while (indexPaths.length > 0)
-      target = target.folders[indexPaths.shift() as number]
+      target = target?.folders[indexPaths.shift() as number]
 
     return target !== undefined ? target : null
   }
@@ -550,6 +797,7 @@ class MyCollectionsAdapter implements SmartTreeAdapter<MyCollectionNode> {
           id: index.toString(),
           data: {
             type: "collections",
+            isLastItem: index === this.data.value.length - 1,
             data: {
               parentIndex: null,
               data: item,
@@ -571,23 +819,31 @@ class MyCollectionsAdapter implements SmartTreeAdapter<MyCollectionNode> {
 
       if (item) {
         const data = [
-          ...item.folders.map((item, index) => ({
+          ...item.folders.map((folder, index) => ({
             id: `${id}/${index}`,
             data: {
+              isLastItem:
+                item.folders && item.folders.length > 1
+                  ? index === item.folders.length - 1
+                  : false,
               type: "folders",
               data: {
                 parentIndex: id,
-                data: item,
+                data: folder,
               },
             },
           })),
-          ...item.requests.map((item, index) => ({
+          ...item.requests.map((requests, index) => ({
             id: `${id}/${index}`,
             data: {
+              isLastItem:
+                item.requests && item.requests.length > 1
+                  ? index === item.requests.length - 1
+                  : false,
               type: "requests",
               data: {
                 parentIndex: id,
-                data: item,
+                data: requests,
               },
             },
           })),
@@ -597,11 +853,10 @@ class MyCollectionsAdapter implements SmartTreeAdapter<MyCollectionNode> {
           status: "loaded",
           data: data,
         } as ChildrenResult<Folder | Requests>
-      } else {
-        return {
-          status: "loaded",
-          data: [],
-        }
+      }
+      return {
+        status: "loaded",
+        data: [],
       }
     })
   }

@@ -1,11 +1,11 @@
 <template>
-  <div class="flex flex-col items-center justify-between min-h-screen">
+  <div class="flex min-h-screen flex-col items-center justify-between">
     <div
       v-if="invalidLink"
-      class="flex flex-col items-center justify-center flex-1"
+      class="flex flex-1 flex-col items-center justify-center"
     >
-      <i class="pb-2 opacity-75 material-icons">error_outline</i>
-      <h1 class="text-center heading">
+      <icon-lucide-alert-triangle class="svg-icons mb-2 opacity-75" />
+      <h1 class="heading text-center">
         {{ t("team.invalid_invite_link") }}
       </h1>
       <p class="mt-2 text-center">
@@ -14,40 +14,40 @@
     </div>
     <div
       v-else-if="loadingCurrentUser"
-      class="flex flex-col items-center justify-center flex-1 p-4"
+      class="flex flex-1 flex-col items-center justify-center p-4"
     >
-      <SmartSpinner />
+      <HoppSmartSpinner />
     </div>
     <div
       v-else-if="currentUser === null"
-      class="flex flex-col items-center justify-center flex-1 p-4"
+      class="flex flex-1 flex-col items-center justify-center p-4"
     >
       <h1 class="heading">{{ t("team.login_to_continue") }}</h1>
       <p class="mt-2">{{ t("team.login_to_continue_description") }}</p>
-      <ButtonPrimary
+      <HoppButtonPrimary
         :label="t('auth.login_to_hoppscotch')"
         class="mt-8"
         @click="invokeAction('modals.login.toggle')"
       />
     </div>
-    <div v-else class="flex flex-col items-center justify-center flex-1 p-4">
+    <div v-else class="flex flex-1 flex-col items-center justify-center p-4">
       <div
         v-if="inviteDetails.loading"
-        class="flex flex-col items-center justify-center flex-1 p-4"
+        class="flex flex-1 flex-col items-center justify-center p-4"
       >
-        <SmartSpinner />
+        <HoppSmartSpinner />
       </div>
       <div v-else>
         <div
           v-if="!inviteDetails.loading && E.isLeft(inviteDetails.data)"
           class="flex flex-col items-center p-4"
         >
-          <i class="mb-4 material-icons">error_outline</i>
+          <icon-lucide-alert-triangle class="svg-icons mb-4" />
           <p>
             {{ getErrorMessage(inviteDetails.data.left) }}
           </p>
           <p
-            class="flex flex-col items-center p-4 mt-8 border rounded border-dividerLight"
+            class="mt-8 flex flex-col items-center rounded border border-dividerLight p-4"
           >
             <span class="mb-4">
               {{ t("team.logout_and_try_again") }}
@@ -66,12 +66,12 @@
             E.isRight(inviteDetails.data) &&
             !joinTeamSuccess
           "
-          class="flex flex-col items-center justify-center flex-1 p-4"
+          class="flex flex-1 flex-col items-center justify-center p-4"
         >
           <h1 class="heading">
             {{
               t("team.join_team", {
-                team: inviteDetails.data.right.teamInvitation.team.name,
+                workspace: inviteDetails.data.right.teamInvitation.team.name,
               })
             }}
           </h1>
@@ -81,15 +81,15 @@
                 owner:
                   inviteDetails.data.right.teamInvitation.creator.displayName ??
                   inviteDetails.data.right.teamInvitation.creator.email,
-                team: inviteDetails.data.right.teamInvitation.team.name,
+                workspace: inviteDetails.data.right.teamInvitation.team.name,
               })
             }}
           </p>
           <div class="mt-8">
-            <ButtonPrimary
+            <HoppButtonPrimary
               :label="
                 t('team.join_team', {
-                  team: inviteDetails.data.right.teamInvitation.team.name,
+                  workspace: inviteDetails.data.right.teamInvitation.team.name,
                 })
               "
               :loading="loading"
@@ -104,24 +104,24 @@
             E.isRight(inviteDetails.data) &&
             joinTeamSuccess
           "
-          class="flex flex-col items-center justify-center flex-1 p-4"
+          class="flex flex-1 flex-col items-center justify-center p-4"
         >
           <h1 class="heading">
             {{
               t("team.joined_team", {
-                team: inviteDetails.data.right.teamInvitation.team.name,
+                workspace: inviteDetails.data.right.teamInvitation.team.name,
               })
             }}
           </h1>
           <p class="mt-2 text-secondaryLight">
             {{
               t("team.joined_team_description", {
-                team: inviteDetails.data.right.teamInvitation.team.name,
+                workspace: inviteDetails.data.right.teamInvitation.team.name,
               })
             }}
           </p>
           <div class="mt-8">
-            <ButtonSecondary
+            <HoppButtonSecondary
               to="/"
               :icon="IconHome"
               filled
@@ -132,8 +132,8 @@
       </div>
     </div>
     <div class="p-4">
-      <ButtonSecondary
-        class="tracking-wide !font-bold !text-secondaryDark"
+      <HoppButtonSecondary
+        class="!font-bold tracking-wide !text-secondaryDark"
         label="HOPPSCOTCH"
         to="/"
       />
@@ -155,8 +155,8 @@ import {
   GetInviteDetailsQueryVariables,
 } from "~/helpers/backend/graphql"
 import { acceptTeamInvitation } from "~/helpers/backend/mutations/TeamInvitation"
-import { initializeFirebase } from "~/helpers/fb"
-import { currentUser$, probableUser$ } from "~/helpers/fb/auth"
+import { initializeApp } from "~/helpers/app"
+import { platform } from "~/platform"
 import { onLoggedIn } from "@composables/auth"
 import { useReadonlyStream } from "@composables/stream"
 import { useToast } from "@composables/toast"
@@ -197,13 +197,20 @@ export default defineComponent({
       }
     })
 
-    const probableUser = useReadonlyStream(probableUser$, null)
-    const currentUser = useReadonlyStream(currentUser$, null)
+    const probableUser = useReadonlyStream(
+      platform.auth.getProbableUserStream(),
+      platform.auth.getProbableUser()
+    )
+
+    const currentUser = useReadonlyStream(
+      platform.auth.getCurrentUserStream(),
+      platform.auth.getCurrentUser()
+    )
 
     const loadingCurrentUser = computed(() => {
       if (!probableUser.value) return false
       else if (!currentUser.value) return true
-      else return false
+      return false
     })
 
     return {
@@ -227,7 +234,7 @@ export default defineComponent({
     }
   },
   beforeMount() {
-    initializeFirebase()
+    initializeApp()
   },
   mounted() {
     if (typeof this.$route.query.id === "string") {
@@ -257,21 +264,20 @@ export default defineComponent({
     getErrorMessage(error: GQLError<GetInviteDetailsError>) {
       if (error.type === "network_error") {
         return this.t("error.network_error")
-      } else {
-        switch (error.error) {
-          case "team_invite/not_valid_viewer":
-            return this.t("team.not_valid_viewer")
-          case "team_invite/not_found":
-            return this.t("team.not_found")
-          case "team_invite/no_invite_found":
-            return this.t("team.no_invite_found")
-          case "team_invite/already_member":
-            return this.t("team.already_member")
-          case "team_invite/email_do_not_match":
-            return this.t("team.email_do_not_match")
-          default:
-            return this.t("error.something_went_wrong")
-        }
+      }
+      switch (error.error) {
+        case "team_invite/not_valid_viewer":
+          return this.t("team.not_valid_viewer")
+        case "team_invite/not_found":
+          return this.t("team.not_found")
+        case "team_invite/no_invite_found":
+          return this.t("team.no_invite_found")
+        case "team_invite/already_member":
+          return this.t("team.already_member")
+        case "team_invite/email_do_not_match":
+          return this.t("team.email_do_not_match")
+        default:
+          return this.t("error.something_went_wrong")
       }
     },
   },

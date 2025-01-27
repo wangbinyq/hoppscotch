@@ -1,38 +1,32 @@
 <template>
-  <SmartModal
+  <HoppSmartModal
     v-if="show"
     dialog
     :title="`${t('import.curl')}`"
     @close="hideModal"
   >
     <template #body>
-      <div class="border rounded border-dividerLight">
+      <div class="rounded border border-dividerLight">
         <div class="flex flex-col">
           <div class="flex items-center justify-between pl-4">
-            <label class="font-semibold truncate text-secondaryLight">
+            <label class="truncate font-semibold text-secondaryLight">
               cURL
             </label>
             <div class="flex items-center">
-              <ButtonSecondary
+              <HoppButtonSecondary
                 v-tippy="{ theme: 'tooltip' }"
                 :title="t('action.clear_all')"
                 :icon="IconTrash2"
                 @click="clearContent()"
               />
-              <ButtonSecondary
+              <HoppButtonSecondary
                 v-tippy="{ theme: 'tooltip' }"
                 :title="t('state.linewrap')"
-                :class="{ '!text-accent': linewrapEnabled }"
+                :class="{ '!text-accent': WRAP_LINES }"
                 :icon="IconWrapText"
-                @click.prevent="linewrapEnabled = !linewrapEnabled"
+                @click.prevent="toggleNestedSetting('WRAP_LINES', 'importCurl')"
               />
-              <ButtonSecondary
-                v-tippy="{ theme: 'tooltip', allowHTML: true }"
-                :title="t('action.download_file')"
-                :icon="downloadIcon"
-                @click="downloadResponse"
-              />
-              <ButtonSecondary
+              <HoppButtonSecondary
                 v-tippy="{ theme: 'tooltip', allowHTML: true }"
                 :title="t('action.copy')"
                 :icon="copyIcon"
@@ -43,7 +37,7 @@
           <div class="h-46">
             <div
               ref="curlEditor"
-              class="h-full border-t rounded-b border-dividerLight"
+              class="h-full rounded-b border-t border-dividerLight"
             ></div>
           </div>
         </div>
@@ -51,13 +45,13 @@
     </template>
     <template #footer>
       <span class="flex space-x-2">
-        <ButtonPrimary
+        <HoppButtonPrimary
           ref="importButton"
           :label="`${t('import.title')}`"
           outline
           @click="handleImport"
         />
-        <ButtonSecondary
+        <HoppButtonSecondary
           :label="`${t('action.cancel')}`"
           outline
           filled
@@ -65,7 +59,7 @@
         />
       </span>
       <span class="flex">
-        <ButtonSecondary
+        <HoppButtonSecondary
           :icon="pasteIcon"
           :label="`${t('action.paste')}`"
           filled
@@ -74,35 +68,39 @@
         />
       </span>
     </template>
-  </SmartModal>
+  </HoppSmartModal>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue"
 import { refAutoReset } from "@vueuse/core"
 import { useCodemirror } from "@composables/codemirror"
-import { setRESTRequest } from "~/newstore/RESTSession"
 import { useI18n } from "@composables/i18n"
 import { useToast } from "@composables/toast"
 import { parseCurlToHoppRESTReq } from "~/helpers/curl"
-import {
-  useCopyResponse,
-  useDownloadResponse,
-} from "~/composables/lens-actions"
+import { useCopyResponse } from "~/composables/lens-actions"
 
 import IconWrapText from "~icons/lucide/wrap-text"
 import IconClipboard from "~icons/lucide/clipboard"
 import IconCheck from "~icons/lucide/check"
 import IconTrash2 from "~icons/lucide/trash-2"
+import { platform } from "~/platform"
+import { RESTTabService } from "~/services/tab/rest"
+import { useService } from "dioc/vue"
+import { useNestedSetting } from "~/composables/settings"
+import { toggleNestedSetting } from "~/newstore/settings"
+import { EditorView } from "@codemirror/view"
 
 const t = useI18n()
 
 const toast = useToast()
 
+const tabs = useService(RESTTabService)
+
 const curl = ref("")
 
 const curlEditor = ref<any | null>(null)
-const linewrapEnabled = ref(true)
+const WRAP_LINES = useNestedSetting("WRAP_LINES", "importCurl")
 
 const props = defineProps<{ show: boolean; text: string }>()
 
@@ -113,11 +111,12 @@ useCodemirror(
     extendedEditorConfig: {
       mode: "application/x-sh",
       placeholder: `${t("request.enter_curl")}`,
-      lineWrapping: linewrapEnabled,
+      lineWrapping: WRAP_LINES,
     },
     linter: null,
     completer: null,
     environmentHighlights: false,
+    onInit: (view: EditorView) => view.focus(),
   })
 )
 
@@ -144,7 +143,13 @@ const handleImport = () => {
   try {
     const req = parseCurlToHoppRESTReq(text)
 
-    setRESTRequest(req)
+    platform.analytics?.logEvent({
+      type: "HOPP_REST_IMPORT_CURL",
+    })
+
+    if (tabs.currentActiveTab.value.document.type === "example-response") return
+
+    tabs.currentActiveTab.value.document.request = req
   } catch (e) {
     console.error(e)
     toast.error(`${t("error.curl_invalid_format")}`)
@@ -171,7 +176,6 @@ const handlePaste = async () => {
 }
 
 const { copyIcon, copyResponse } = useCopyResponse(curl)
-const { downloadIcon, downloadResponse } = useDownloadResponse("", curl)
 
 const clearContent = () => {
   curl.value = ""

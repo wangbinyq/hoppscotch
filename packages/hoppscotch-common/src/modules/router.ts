@@ -6,8 +6,8 @@ import {
 } from "vue-router"
 import { setupLayouts } from "virtual:generated-layouts"
 import generatedRoutes from "virtual:generated-pages"
-import { logPageView } from "~/helpers/fb/analytics"
 import { readonly, ref } from "vue"
+import { platform } from "~/platform"
 
 const routes = setupLayouts(generatedRoutes)
 
@@ -47,23 +47,35 @@ export default <HoppModule>{
       routes,
     })
 
-    router.beforeEach((to, from) => {
+    router.beforeEach(async (to, from) => {
       _isLoadingInitialRoute.value = isInitialRoute(from)
 
+      const onBeforeRouteChangePromises: Promise<any>[] = []
+
       HOPP_MODULES.forEach((mod) => {
-        mod.onBeforeRouteChange?.(to, from, router)
+        const res = mod.onBeforeRouteChange?.(to, from, router)
+        if (res) onBeforeRouteChangePromises.push(res)
       })
+      platform.addedHoppModules?.forEach((mod) => {
+        const res = mod.onBeforeRouteChange?.(to, from, router)
+        if (res) onBeforeRouteChangePromises.push(res)
+      })
+
+      await Promise.all(onBeforeRouteChangePromises)
     })
 
     // Instead of this a better architecture is for the router
     // module to expose a stream of router events that can be independently
     // subbed to
     router.afterEach((to) => {
-      logPageView(to.fullPath)
+      platform.analytics?.logPageView(to.fullPath)
 
       _isLoadingInitialRoute.value = false
 
       HOPP_MODULES.forEach((mod) => {
+        mod.onAfterRouteChange?.(to, router)
+      })
+      platform.addedHoppModules?.forEach((mod) => {
         mod.onAfterRouteChange?.(to, router)
       })
     })
@@ -71,5 +83,6 @@ export default <HoppModule>{
     app.use(router)
 
     HOPP_MODULES.forEach((mod) => mod.onRouterInit?.(app, router))
+    platform.addedHoppModules?.forEach((mod) => mod.onRouterInit?.(app, router))
   },
 }

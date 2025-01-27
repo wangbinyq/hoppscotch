@@ -1,4 +1,3 @@
-import IconOpenAPI from "~icons/lucide/file"
 import {
   OpenAPI,
   OpenAPIV2,
@@ -13,11 +12,14 @@ import {
   HoppRESTHeader,
   HoppRESTParam,
   HoppRESTReqBody,
-  HoppRESTRequest,
   knownContentTypes,
   makeRESTRequest,
   HoppCollection,
   makeCollection,
+  HoppRESTRequestVariable,
+  HoppRESTRequest,
+  HoppRESTRequestResponses,
+  HoppRESTResponseOriginalRequest,
 } from "@hoppscotch/data"
 import { pipe, flow } from "fp-ts/function"
 import * as A from "fp-ts/Array"
@@ -25,8 +27,9 @@ import * as S from "fp-ts/string"
 import * as O from "fp-ts/Option"
 import * as TE from "fp-ts/TaskEither"
 import * as RA from "fp-ts/ReadonlyArray"
-import { step } from "../steps"
-import { defineImporter, IMPORTER_INVALID_FILE_FORMAT } from "."
+import { IMPORTER_INVALID_FILE_FORMAT } from "."
+import { cloneDeep, isNumber } from "lodash-es"
+import { getStatusCodeReasonPhrase } from "~/helpers/utils/statusCodes"
 
 export const OPENAPI_DEREF_ERROR = "openapi/deref_error" as const
 
@@ -44,6 +47,42 @@ const objectHasProperty = <T extends string>(
   !!obj &&
   typeof obj === "object" &&
   Object.prototype.hasOwnProperty.call(obj, propName)
+
+// basic validation for OpenAPI V2 Document
+const isOpenAPIV2Document = (doc: unknown): doc is OpenAPIV2.Document => {
+  return (
+    objectHasProperty(doc, "swagger") &&
+    typeof doc.swagger === "string" &&
+    doc.swagger === "2.0"
+  )
+}
+
+// basic validation for OpenAPI V3 Document
+const isOpenAPIV3Document = (
+  doc: unknown
+): doc is OpenAPIV3.Document | OpenAPIV31.Document => {
+  return (
+    objectHasProperty(doc, "openapi") &&
+    typeof doc.openapi === "string" &&
+    doc.openapi.startsWith("3.")
+  )
+}
+
+const hasRequiredOpenAPIFields = (doc: unknown): boolean => {
+  return (
+    objectHasProperty(doc, "info") &&
+    objectHasProperty(doc.info, "title") &&
+    objectHasProperty(doc.info, "version") &&
+    objectHasProperty(doc, "paths")
+  )
+}
+
+const isABasicOpenAPIDoc = (doc: unknown): boolean => {
+  return (
+    (isOpenAPIV2Document(doc) || isOpenAPIV3Document(doc)) &&
+    hasRequiredOpenAPIFields(doc)
+  )
+}
 
 type OpenAPIPathInfoType =
   | OpenAPIV2.PathItemObject<Record<string, unknown>>
@@ -79,11 +118,132 @@ const parseOpenAPIParams = (params: OpenAPIParamsType[]): HoppRESTParam[] =>
               key: param.name,
               value: "", // TODO: Can we do anything more ? (parse default values maybe)
               active: true,
+              description: param.description ?? "",
             }
         )
       )
     )
   )
+
+const parseOpenAPIVariables = (
+  variables: OpenAPIParamsType[]
+): HoppRESTRequestVariable[] =>
+  pipe(
+    variables,
+
+    A.filterMap(
+      flow(
+        O.fromPredicate((param) => param.in === "path"),
+        O.map(
+          (param) =>
+            <HoppRESTRequestVariable>{
+              key: param.name,
+              value: "", // TODO: Can we do anything more ? (parse default values maybe)
+              active: true,
+            }
+        )
+      )
+    )
+  )
+
+const parseOpenAPIV3Responses = (
+  op: OpenAPIV3.OperationObject | OpenAPIV31.OperationObject,
+  originalRequest: HoppRESTResponseOriginalRequest
+): HoppRESTRequestResponses => {
+  const responses = op.responses
+  if (!responses) return {}
+
+  const res: HoppRESTRequestResponses = {}
+
+  for (const [key, value] of Object.entries(responses)) {
+    const response = value as
+      | OpenAPIV3.ResponseObject
+      | OpenAPIV31.ResponseObject
+
+    // add support for schema key as well
+    const contentType = Object.keys(response.content ?? {})[0]
+    const body = response.content?.[contentType]
+
+    const name = response.description ?? key
+
+    const code = isNumber(key) ? Number(key) : 200
+
+    const status = getStatusCodeReasonPhrase(code)
+
+    const headers: HoppRESTHeader[] = [
+      {
+        key: "content-type",
+        value: contentType ?? "application/json",
+        description: "",
+        active: true,
+      },
+    ]
+
+    res[name] = {
+      name,
+      status,
+      code,
+      headers,
+      body: JSON.stringify(body ?? ""),
+      originalRequest,
+    }
+  }
+
+  return res
+}
+
+const parseOpenAPIV2Responses = (
+  op: OpenAPIV2.OperationObject,
+  originalRequest: HoppRESTResponseOriginalRequest
+): HoppRESTRequestResponses => {
+  const responses = op.responses
+
+  if (!responses) return {}
+
+  const res: HoppRESTRequestResponses = {}
+
+  for (const [key, value] of Object.entries(responses)) {
+    const response = value as OpenAPIV2.ResponseObject
+
+    // add support for schema key as well
+    const contentType = Object.keys(response.examples ?? {})[0]
+    const body = response.examples?.[contentType]
+
+    const name = response.description ?? key
+
+    const code = isNumber(Number(key)) ? Number(key) : 200
+    const status = getStatusCodeReasonPhrase(code)
+
+    const headers: HoppRESTHeader[] = [
+      {
+        key: "content-type",
+        value: contentType ?? "application/json",
+        description: "",
+        active: true,
+      },
+    ]
+
+    res[name] = {
+      name,
+      status,
+      code,
+      headers,
+      body: body ?? "",
+      originalRequest,
+    }
+  }
+
+  return res
+}
+
+const parseOpenAPIResponses = (
+  doc: OpenAPI.Document,
+  op: OpenAPIOperationType,
+  originalRequest: HoppRESTResponseOriginalRequest
+): HoppRESTRequestResponses =>
+  isOpenAPIV3Operation(doc, op)
+    ? parseOpenAPIV3Responses(op, originalRequest)
+    : parseOpenAPIV2Responses(op, originalRequest)
 
 const parseOpenAPIHeaders = (params: OpenAPIParamsType[]): HoppRESTHeader[] =>
   pipe(
@@ -92,14 +252,14 @@ const parseOpenAPIHeaders = (params: OpenAPIParamsType[]): HoppRESTHeader[] =>
     A.filterMap(
       flow(
         O.fromPredicate((param) => param.in === "header"),
-        O.map(
-          (header) =>
-            <HoppRESTParam>{
-              key: header.name,
-              value: "", // TODO: Can we do anything more ? (parse default values maybe)
-              active: true,
-            }
-        )
+        O.map((header) => {
+          return <HoppRESTParam>{
+            key: header.name,
+            value: "", // TODO: Can we do anything more ? (parse default values maybe)
+            active: true,
+            description: header.description ?? "",
+          }
+        })
       )
     )
   )
@@ -167,14 +327,12 @@ const parseOpenAPIV3BodyFormData = (
       contentType,
       body: keys.map((key) => `${key}: `).join("\n"),
     }
-  } else {
-    return {
-      contentType,
-      body: keys.map(
-        (key) =>
-          <FormDataKeyValue>{ key, value: "", isFile: false, active: true }
-      ),
-    }
+  }
+  return {
+    contentType,
+    body: keys.map(
+      (key) => <FormDataKeyValue>{ key, value: "", isFile: false, active: true }
+    ),
   }
 }
 
@@ -195,7 +353,7 @@ const parseOpenAPIV3Body = (
   // We only take the first definition
   const [contentType, media]: [
     string,
-    OpenAPIV3.MediaTypeObject | OpenAPIV31.MediaTypeObject
+    OpenAPIV3.MediaTypeObject | OpenAPIV31.MediaTypeObject,
   ] = objs[0]
 
   return contentType in knownContentTypes
@@ -233,16 +391,15 @@ const resolveOpenAPIV3SecurityObj = (
     } else if (scheme.scheme === "bearer") {
       // Bearer
       return { authType: "bearer", authActive: true, token: "" }
-    } else {
-      // Unknown/Unsupported Scheme
-      return { authType: "none", authActive: true }
     }
+    // Unknown/Unsupported Scheme
+    return { authType: "none", authActive: true }
   } else if (scheme.type === "apiKey") {
     if (scheme.in === "header") {
       return {
         authType: "api-key",
         authActive: true,
-        addTo: "Headers",
+        addTo: "HEADERS",
         key: scheme.name,
         value: "",
       }
@@ -250,7 +407,7 @@ const resolveOpenAPIV3SecurityObj = (
       return {
         authType: "api-key",
         authActive: true,
-        addTo: "Query params",
+        addTo: "QUERY_PARAMS",
         key: scheme.in,
         value: "",
       }
@@ -261,68 +418,93 @@ const resolveOpenAPIV3SecurityObj = (
       return {
         authType: "oauth-2",
         authActive: true,
-        accessTokenURL: scheme.flows.authorizationCode.tokenUrl ?? "",
-        authURL: scheme.flows.authorizationCode.authorizationUrl ?? "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          grantType: "AUTHORIZATION_CODE",
+          authEndpoint: scheme.flows.authorizationCode.authorizationUrl ?? "",
+          clientID: "",
+          scopes: _schemeData.join(" "),
+          token: "",
+          isPKCE: false,
+          tokenEndpoint: scheme.flows.authorizationCode.tokenUrl ?? "",
+          clientSecret: "",
+        },
+        addTo: "HEADERS",
       }
     } else if (scheme.flows.implicit) {
       return {
         authType: "oauth-2",
         authActive: true,
-        authURL: scheme.flows.implicit.authorizationUrl ?? "",
-        accessTokenURL: "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          grantType: "IMPLICIT",
+          authEndpoint: scheme.flows.implicit.authorizationUrl ?? "",
+          clientID: "",
+          token: "",
+          scopes: _schemeData.join(" "),
+        },
+        addTo: "HEADERS",
       }
     } else if (scheme.flows.password) {
       return {
         authType: "oauth-2",
         authActive: true,
-        authURL: "",
-        accessTokenURL: scheme.flows.password.tokenUrl ?? "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          grantType: "PASSWORD",
+          clientID: "",
+          authEndpoint: scheme.flows.password.tokenUrl,
+          clientSecret: "",
+          password: "",
+          username: "",
+          token: "",
+          scopes: _schemeData.join(" "),
+        },
+        addTo: "HEADERS",
       }
     } else if (scheme.flows.clientCredentials) {
       return {
         authType: "oauth-2",
         authActive: true,
-        accessTokenURL: scheme.flows.clientCredentials.tokenUrl ?? "",
-        authURL: "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          grantType: "CLIENT_CREDENTIALS",
+          authEndpoint: scheme.flows.clientCredentials.tokenUrl ?? "",
+          clientID: "",
+          clientSecret: "",
+          scopes: _schemeData.join(" "),
+          token: "",
+          clientAuthentication: "IN_BODY",
+        },
+        addTo: "HEADERS",
       }
-    } else {
-      return {
-        authType: "oauth-2",
-        authActive: true,
-        accessTokenURL: "",
-        authURL: "",
+    }
+    return {
+      authType: "oauth-2",
+      authActive: true,
+      grantTypeInfo: {
+        grantType: "AUTHORIZATION_CODE",
+        authEndpoint: "",
         clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
+        scopes: _schemeData.join(" "),
         token: "",
-      }
+        isPKCE: false,
+        tokenEndpoint: "",
+        clientSecret: "",
+      },
+      addTo: "HEADERS",
     }
   } else if (scheme.type === "openIdConnect") {
     return {
       authType: "oauth-2",
       authActive: true,
-      accessTokenURL: "",
-      authURL: "",
-      clientID: "",
-      oidcDiscoveryURL: scheme.openIdConnectUrl ?? "",
-      scope: _schemeData.join(" "),
-      token: "",
+      grantTypeInfo: {
+        grantType: "AUTHORIZATION_CODE",
+        authEndpoint: "",
+        clientID: "",
+        scopes: _schemeData.join(" "),
+        token: "",
+        isPKCE: false,
+        tokenEndpoint: "",
+        clientSecret: "",
+      },
+      addTo: "HEADERS",
     }
   }
 
@@ -339,7 +521,7 @@ const resolveOpenAPIV3SecurityScheme = (
     | undefined
 
   if (!scheme) return { authType: "none", authActive: true }
-  else return resolveOpenAPIV3SecurityObj(scheme, schemeData)
+  return resolveOpenAPIV3SecurityObj(scheme, schemeData)
 }
 
 const resolveOpenAPIV3Security = (
@@ -388,7 +570,7 @@ const resolveOpenAPIV2SecurityScheme = (
     // V2 only supports in: header and in: query
     return {
       authType: "api-key",
-      addTo: scheme.in === "header" ? "Headers" : "Query params",
+      addTo: scheme.in === "header" ? "HEADERS" : "QUERY_PARAMS",
       authActive: true,
       key: scheme.name,
       value: "",
@@ -399,57 +581,77 @@ const resolveOpenAPIV2SecurityScheme = (
       return {
         authType: "oauth-2",
         authActive: true,
-        accessTokenURL: scheme.tokenUrl ?? "",
-        authURL: scheme.authorizationUrl ?? "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          authEndpoint: scheme.authorizationUrl ?? "",
+          clientID: "",
+          clientSecret: "",
+          grantType: "AUTHORIZATION_CODE",
+          scopes: _schemeData.join(" "),
+          token: "",
+          isPKCE: false,
+          tokenEndpoint: scheme.tokenUrl ?? "",
+        },
+        addTo: "HEADERS",
       }
     } else if (scheme.flow === "implicit") {
       return {
         authType: "oauth-2",
         authActive: true,
-        accessTokenURL: "",
-        authURL: scheme.authorizationUrl ?? "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          authEndpoint: scheme.authorizationUrl ?? "",
+          clientID: "",
+          grantType: "IMPLICIT",
+          scopes: _schemeData.join(" "),
+          token: "",
+        },
+        addTo: "HEADERS",
       }
     } else if (scheme.flow === "application") {
       return {
         authType: "oauth-2",
         authActive: true,
-        accessTokenURL: scheme.tokenUrl ?? "",
-        authURL: "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          authEndpoint: scheme.tokenUrl ?? "",
+          clientID: "",
+          clientSecret: "",
+          grantType: "CLIENT_CREDENTIALS",
+          scopes: _schemeData.join(" "),
+          token: "",
+          clientAuthentication: "IN_BODY",
+        },
+        addTo: "HEADERS",
       }
     } else if (scheme.flow === "password") {
       return {
         authType: "oauth-2",
         authActive: true,
-        accessTokenURL: scheme.tokenUrl ?? "",
-        authURL: "",
-        clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
-        token: "",
+        grantTypeInfo: {
+          grantType: "PASSWORD",
+          authEndpoint: scheme.tokenUrl ?? "",
+          clientID: "",
+          clientSecret: "",
+          password: "",
+          scopes: _schemeData.join(" "),
+          token: "",
+          username: "",
+        },
+        addTo: "HEADERS",
       }
-    } else {
-      return {
-        authType: "oauth-2",
-        authActive: true,
-        accessTokenURL: "",
-        authURL: "",
+    }
+    return {
+      authType: "oauth-2",
+      authActive: true,
+      grantTypeInfo: {
+        authEndpoint: "",
         clientID: "",
-        oidcDiscoveryURL: "",
-        scope: _schemeData.join(" "),
+        clientSecret: "",
+        grantType: "AUTHORIZATION_CODE",
+        scopes: _schemeData.join(" "),
         token: "",
-      }
+        isPKCE: false,
+        tokenEndpoint: "",
+      },
+      addTo: "HEADERS",
     }
   }
 
@@ -514,6 +716,32 @@ const parseOpenAPIAuth = (
     ? parseOpenAPIV3Auth(doc as OpenAPIV3.Document | OpenAPIV31.Document, op)
     : parseOpenAPIV2Auth(doc as OpenAPIV2.Document, op)
 
+const parseOpenAPIUrl = (
+  doc: OpenAPI.Document | OpenAPIV2.Document | OpenAPIV3.Document
+): string => {
+  /**
+   * OpenAPI V2 has version as a string in the document's swagger property.
+   * And host and basePath are in the document's host and basePath properties.
+   * Relevant v2 reference: https://swagger.io/specification/v2/#:~:text=to%20be%20obscured.-,Schema,-Swagger%20Object
+   **/
+
+  if (objectHasProperty(doc, "swagger")) {
+    return `${doc.host}${doc.basePath}`
+  }
+
+  /**
+   * OpenAPI V3 has version as a string in the document's openapi property.
+   * And host and basePath are in the document's servers property.
+   * Relevant v3 reference: https://swagger.io/specification/#server-object
+   **/
+  if (objectHasProperty(doc, "servers")) {
+    return doc.servers?.[0].url ?? "<<baseUrl>>"
+  }
+
+  // If the document is neither v2 nor v3 then return a env variable as placeholder
+  return "<<baseUrl>>"
+}
+
 const convertPathToHoppReqs = (
   doc: OpenAPI.Document,
   pathName: string,
@@ -531,49 +759,126 @@ const convertPathToHoppReqs = (
     ),
 
     // Construct request object
-    RA.map(({ method, info }) =>
-      makeRESTRequest({
-        name: info.operationId ?? info.summary ?? "Untitled Request",
-        method: method.toUpperCase(),
-        endpoint: `<<baseUrl>>${replaceOpenApiPathTemplating(pathName)}`, // TODO: Make this proper
+    RA.map(({ method, info }) => {
+      const openAPIUrl = parseOpenAPIUrl(doc)
+      const openAPIPath = replaceOpenApiPathTemplating(pathName)
 
-        // We don't need to worry about reference types as the Dereferencing pass should remove them
-        params: parseOpenAPIParams(
-          (info.parameters as OpenAPIParamsType[] | undefined) ?? []
-        ),
-        headers: parseOpenAPIHeaders(
-          (info.parameters as OpenAPIParamsType[] | undefined) ?? []
-        ),
+      const endpoint =
+        openAPIUrl.endsWith("/") && openAPIPath.startsWith("/")
+          ? openAPIUrl + openAPIPath.slice(1)
+          : openAPIUrl + openAPIPath
 
-        auth: parseOpenAPIAuth(doc, info),
+      const res: {
+        request: HoppRESTRequest
+        metadata: {
+          tags: string[]
+        }
+      } = {
+        request: makeRESTRequest({
+          name: info.operationId ?? info.summary ?? "Untitled Request",
+          method: method.toUpperCase(),
+          endpoint,
 
-        body: parseOpenAPIBody(doc, info),
+          // We don't need to worry about reference types as the Dereferencing pass should remove them
+          params: parseOpenAPIParams(
+            (info.parameters as OpenAPIParamsType[] | undefined) ?? []
+          ),
+          headers: parseOpenAPIHeaders(
+            (info.parameters as OpenAPIParamsType[] | undefined) ?? []
+          ),
 
-        preRequestScript: "",
-        testScript: "",
-      })
-    ),
+          auth: parseOpenAPIAuth(doc, info),
+
+          body: parseOpenAPIBody(doc, info),
+
+          preRequestScript: "",
+          testScript: "",
+
+          requestVariables: parseOpenAPIVariables(
+            (info.parameters as OpenAPIParamsType[] | undefined) ?? []
+          ),
+
+          responses: parseOpenAPIResponses(doc, info, {
+            name: info.operationId ?? info.summary ?? "Untitled Request",
+            auth: parseOpenAPIAuth(doc, info),
+            body: parseOpenAPIBody(doc, info),
+            endpoint,
+            // We don't need to worry about reference types as the Dereferencing pass should remove them
+            params: parseOpenAPIParams(
+              (info.parameters as OpenAPIParamsType[] | undefined) ?? []
+            ),
+            headers: parseOpenAPIHeaders(
+              (info.parameters as OpenAPIParamsType[] | undefined) ?? []
+            ),
+            method: method.toUpperCase(),
+            requestVariables: parseOpenAPIVariables(
+              (info.parameters as OpenAPIParamsType[] | undefined) ?? []
+            ),
+            v: "3",
+          }),
+        }),
+        metadata: {
+          tags: info.tags ?? [],
+        },
+      }
+
+      return res
+    }),
 
     // Disable Readonly
     RA.toArray
   )
 
-const convertOpenApiDocToHopp = (
-  doc: OpenAPI.Document
-): TE.TaskEither<never, HoppCollection<HoppRESTRequest>[]> => {
-  const name = doc.info.title
+const convertOpenApiDocsToHopp = (
+  docs: OpenAPI.Document[]
+): TE.TaskEither<never, HoppCollection[]> => {
+  const collections = docs.map((doc) => {
+    const name = doc.info.title
 
-  const paths = Object.entries(doc.paths ?? {})
-    .map(([pathName, pathObj]) => convertPathToHoppReqs(doc, pathName, pathObj))
-    .flat()
+    const paths = Object.entries(doc.paths ?? {})
+      .map(([pathName, pathObj]) =>
+        convertPathToHoppReqs(doc, pathName, pathObj)
+      )
+      .flat()
 
-  return TE.of([
-    makeCollection<HoppRESTRequest>({
+    const requestsByTags: Record<string, Array<HoppRESTRequest>> = {}
+    const requestsWithoutTags: Array<HoppRESTRequest> = []
+
+    paths.forEach(({ metadata, request }) => {
+      const tags = metadata.tags
+
+      if (tags.length === 0) {
+        requestsWithoutTags.push(request)
+        return
+      }
+
+      for (const tag of tags) {
+        if (!requestsByTags[tag]) {
+          requestsByTags[tag] = []
+        }
+
+        requestsByTags[tag].push(cloneDeep(request))
+      }
+    })
+
+    return makeCollection({
       name,
-      folders: [],
-      requests: paths,
-    }),
-  ])
+      folders: Object.entries(requestsByTags).map(([name, paths]) =>
+        makeCollection({
+          name,
+          requests: paths,
+          folders: [],
+          auth: { authType: "inherit", authActive: true },
+          headers: [],
+        })
+      ),
+      requests: requestsWithoutTags,
+      auth: { authType: "inherit", authActive: true },
+      headers: [],
+    })
+  })
+
+  return TE.of(collections)
 }
 
 const parseOpenAPIDocContent = (str: string) =>
@@ -586,44 +891,80 @@ const parseOpenAPIDocContent = (str: string) =>
     )
   )
 
-export default defineImporter({
-  id: "openapi",
-  name: "import.from_openapi",
-  applicableTo: ["my-collections", "team-collections", "url-import"],
-  icon: IconOpenAPI,
-  steps: [
-    step({
-      stepName: "FILE_IMPORT",
-      metadata: {
-        caption: "import.from_openapi_description",
-        acceptedFileTypes: ".json, .yaml, .yml",
-      },
+export const hoppOpenAPIImporter = (fileContents: string[]) =>
+  pipe(
+    // See if we can parse JSON properly
+    fileContents,
+    A.traverse(O.Applicative)(parseOpenAPIDocContent),
+    TE.fromOption(() => {
+      return IMPORTER_INVALID_FILE_FORMAT
     }),
-  ] as const,
-  importer: ([fileContent]) =>
-    pipe(
-      // See if we can parse JSON properly
-      fileContent,
-      parseOpenAPIDocContent,
-      TE.fromOption(() => IMPORTER_INVALID_FILE_FORMAT),
-      // Try validating, else the importer is invalid file format
-      TE.chainW((obj) =>
-        pipe(
-          TE.tryCatch(
-            () => SwaggerParser.validate(obj),
-            () => IMPORTER_INVALID_FILE_FORMAT
-          )
+    // Try validating, else the importer is invalid file format
+    TE.chainW((docArr) => {
+      return pipe(
+        TE.tryCatch(
+          async () => {
+            const resultDoc = []
+
+            for (const docObj of docArr) {
+              try {
+                const isValidOpenAPISpec = isABasicOpenAPIDoc(docObj)
+
+                if (!isValidOpenAPISpec) {
+                  throw new Error("INVALID_OPENAPI_SPEC")
+                }
+
+                const validatedDoc = await SwaggerParser.validate(docObj, {
+                  // @ts-expect-error - this is a valid option, but seems like the types are not updated
+                  continueOnError: true,
+                })
+
+                resultDoc.push(validatedDoc)
+              } catch (err) {
+                if (
+                  err instanceof Error &&
+                  err.message === "INVALID_OPENAPI_SPEC"
+                ) {
+                  throw new Error("INVALID_OPENAPI_SPEC")
+                }
+
+                if (
+                  // @ts-expect-error the type for err is not exported from the library
+                  err.files &&
+                  // @ts-expect-error the type for err is not exported from the library
+                  err.files instanceof SwaggerParser &&
+                  // @ts-expect-error the type for err is not exported from the library
+                  err.files.schema
+                ) {
+                  // @ts-expect-error the type for err is not exported from the library
+                  resultDoc.push(err.files.schema)
+                }
+              }
+            }
+
+            return resultDoc
+          },
+          () => IMPORTER_INVALID_FILE_FORMAT
         )
-      ),
-      // Deference the references
-      TE.chainW((obj) =>
-        pipe(
-          TE.tryCatch(
-            () => SwaggerParser.dereference(obj),
-            () => OPENAPI_DEREF_ERROR
-          )
+      )
+    }),
+    // Deference the references
+    TE.chainW((docArr) =>
+      pipe(
+        TE.tryCatch(
+          async () => {
+            const resultDoc = []
+
+            for (const docObj of docArr) {
+              const validatedDoc = await SwaggerParser.dereference(docObj)
+              resultDoc.push(validatedDoc)
+            }
+
+            return resultDoc
+          },
+          () => OPENAPI_DEREF_ERROR
         )
-      ),
-      TE.chainW(convertOpenApiDocToHopp)
+      )
     ),
-})
+    TE.chainW(convertOpenApiDocsToHopp)
+  )

@@ -6,11 +6,13 @@ module.exports = {
   env: {
     browser: true,
     node: true,
-    jest: true,
   },
   parserOptions: {
     sourceType: "module",
     requireConfigFile: false,
+    ecmaFeatures: {
+      jsx: false,
+    },
   },
   extends: [
     "@vue/typescript/recommended",
@@ -30,8 +32,18 @@ module.exports = {
     "import/named": "off", // because, named import issue with typescript see: https://github.com/typescript-eslint/typescript-eslint/issues/154
     "no-console": "off",
     "no-debugger": process.env.HOPP_LINT_FOR_PROD === "true" ? "error" : "warn",
-    "prettier/prettier":
+    "prettier/prettier": [
       process.env.HOPP_LINT_FOR_PROD === "true" ? "error" : "warn",
+      {},
+      {
+        semi: false,
+        trailingComma: "es5",
+        singleQuote: false,
+        printWidth: 80,
+        useTabs: false,
+        tabWidth: 2,
+      },
+    ],
     "vue/multi-word-component-names": "off",
     "vue/no-side-effects-in-computed-properties": "off",
     "import/no-named-as-default": "off",
@@ -48,7 +60,7 @@ module.exports = {
       {
         name: "localStorage",
         message:
-          "Do not use 'localStorage' directly. Please use localpersistence.ts functions or stores",
+          "Do not use 'localStorage' directly. Please use the PersistenceService",
       },
     ],
     // window.localStorage block
@@ -57,8 +69,10 @@ module.exports = {
       {
         selector: "CallExpression[callee.object.property.name='localStorage']",
         message:
-          "Do not use 'localStorage' directly. Please use localpersistence.ts functions or stores",
+          "Do not use 'localStorage' directly. Please use the PersistenceService",
       },
     ],
+    eqeqeq: 1,
+    "no-else-return": 1,
   },
 }
